@@ -19,13 +19,13 @@
 
 void idle_task( void )
 {
-    for ( ;; )
-    {
-        /* Sleep until the next interrupt. `wfi` ("wait for interrupt")
+  for ( ;; )
+  {
+    /* Sleep until the next interrupt. `wfi` ("wait for interrupt")
          * is allowed in unprivileged code. The next SysTick wakes the
          * CPU: if a delayed task is READY again by then, the kernel
          * switches to it; otherwise the idle task loops and sleeps
          * again. */
-        __asm volatile ( "wfi" );
-    }
+    __asm volatile( "wfi" );
+  }
 }

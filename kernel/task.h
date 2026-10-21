@@ -33,36 +33,36 @@
 
 /* The states of a task. */
 enum task_state {
-    TASK_UNUSED,
-    TASK_READY,         /* could run, waits for its turn */
-    TASK_RUNNING,       /* owns the CPU now (exactly one task at a time) */
-    TASK_BLOCKED,       /* waits for a tick (task_delay, task_delay_until) */
-    TASK_WAITING,       /* waits for one loaded task id */
-    TASK_FINISHED,      /* has called exit: never runs again */
+  TASK_UNUSED,
+  TASK_READY,    /* could run, waits for its turn */
+  TASK_RUNNING,  /* owns the CPU now (exactly one task at a time) */
+  TASK_BLOCKED,  /* waits for a tick (task_delay, task_delay_until) */
+  TASK_WAITING,  /* waits for one loaded task id */
+  TASK_FINISHED, /* has called exit: never runs again */
 };
 
 /* The task control block (TCB): everything the kernel knows about one
  * task. The addresses come from the linker script (scripts/mps2_m3.ld). */
 struct tcb {
-    /* The task's saved stack pointer, while the task is not running.
+  /* The task's saved stack pointer, while the task is not running.
      * It MUST stay the first field: PendSV_Handler (kernel/pendsv.s) is
      * assembly and reads and writes it at offset 0 of the TCB, with a
      * plain `ldr`/`str`, without knowing the rest of the struct. */
-    uint32_t *sp;
-    const char *name;           /* short name for messages, e.g. "A" */
-    void ( *entry )( void );    /* the function the task runs */
-    uint32_t *stack_top;        /* first address above the task's stack */
-    uint32_t part_start;        /* lowest address of the partition */
-    uint32_t part_end;          /* first address after the partition */
-    uint32_t *data_start;       /* the task's variables in RAM: start... */
-    uint32_t *data_end;         /* ...and end (exclusive) */
-    const uint32_t *data_load;  /* their initial values, stored in FLASH */
-    enum task_state state;      /* READY, RUNNING, BLOCKED or FINISHED */
-    uint32_t wake_tick;         /* if BLOCKED: the tick at which it is READY again */
-    uint32_t task_id;           /* generation-tagged id for a loaded program */
-    uint32_t wait_id;           /* if WAITING: loaded task being joined */
-    uint32_t *wait_result;      /* caller's saved r0, completed by task exit */
-    uint8_t executable;         /* project MPU policy input */
+  uint32_t *sp;
+  const char *name;          /* short name for messages, e.g. "A" */
+  void ( *entry )( void );   /* the function the task runs */
+  uint32_t *stack_top;       /* first address above the task's stack */
+  uint32_t part_start;       /* lowest address of the partition */
+  uint32_t part_end;         /* first address after the partition */
+  uint32_t *data_start;      /* the task's variables in RAM: start... */
+  uint32_t *data_end;        /* ...and end (exclusive) */
+  const uint32_t *data_load; /* their initial values, stored in FLASH */
+  enum task_state state;     /* READY, RUNNING, BLOCKED or FINISHED */
+  uint32_t wake_tick;        /* if BLOCKED: the tick at which it is READY again */
+  uint32_t task_id;          /* generation-tagged id for a loaded program */
+  uint32_t wait_id;          /* if WAITING: loaded task being joined */
+  uint32_t *wait_result;     /* caller's saved r0, completed by task exit */
+  uint8_t executable;        /* project MPU policy input */
 };
 
 #define PROGRAM_SLOT_COUNT 4

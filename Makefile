@@ -6,6 +6,9 @@
 # ARM bare-metal cross-compiler: runs on the host, emits Cortex-M code.
 CC := arm-none-eabi-gcc
 
+# Match the clang-format major version used by CI.
+CLANG_FORMAT ?= clang-format-18
+
 # The time slice of the round-robin scheduler, in ticks (one tick =
 # 10 ms). Change it from the command line: `make QUANTUM=2 run`.
 QUANTUM ?= 5
@@ -78,7 +81,7 @@ QEMU := qemu-system-arm -machine mps2-an385 -monitor null -nographic -serial std
 QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 
 # These targets are command names, not files on disk.
-.PHONY: all clean image run debug run-trace test
+.PHONY: all clean image run debug run-trace test format format-check
 
 # Default goal: build the image.
 all: $(BIN)
@@ -144,3 +147,12 @@ test:
 # Remove every generated file, demo and quantum builds included.
 clean:
 	rm -rf build
+
+# Use tracked C sources and headers so build outputs are never formatted.
+# NUL separators keep filenames containing spaces intact.
+format:
+	git ls-files -z -- '*.c' '*.h' | xargs -0 $(CLANG_FORMAT) --style=file -i
+
+# --dry-run leaves files untouched; --Werror makes differences fail the check.
+format-check:
+	git ls-files -z -- '*.c' '*.h' | xargs -0 $(CLANG_FORMAT) --style=file --dry-run --Werror

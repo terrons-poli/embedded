@@ -15,14 +15,14 @@
  * ctx is not needed here. */
 static void kprintf_out( char c, void *ctx )
 {
-    (void) ctx;
-    uart_putc_polled( c );
+  (void) ctx;
+  uart_putc_polled( c );
 }
 
 void kprintf( const char *fmt, ... )
 {
-    va_list ap;                             /* the extra arguments */
-    va_start( ap, fmt );                    /* start after fmt */
-    vformat( kprintf_out, 0, fmt, ap );     /* format and send */
-    va_end( ap );                           /* done with the arguments */
+  va_list ap;                         /* the extra arguments */
+  va_start( ap, fmt );                /* start after fmt */
+  vformat( kprintf_out, 0, fmt, ap ); /* format and send */
+  va_end( ap );                       /* done with the arguments */
 }

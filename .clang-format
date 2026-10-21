@@ -1,0 +1,42 @@
+# Target clang-format 18, matching .github/workflows/format.yml.
+# LLVM supplies defaults; overrides keep the project's brace and paren style.
+BasedOnStyle: LLVM
+
+IndentWidth: 2
+ContinuationIndentWidth: 2
+UseTab: Never
+# Zero disables the line-length limit; omitting this inherits LLVM's 80 columns.
+ColumnLimit: 0
+
+# Functions and control statements put their opening brace on a new line.
+# Structs and enums keep their opening brace next to the declaration.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: Always
+  BeforeElse: true
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+# Remove optional braces from simple if/else/for/while bodies.
+# LLVM keeps braces in some nested cases to avoid ambiguous control flow.
+RemoveBracesLLVM: true
+
+# Examples: if ( ready ), uart_write( buf, len ), and uint32_t *ptr.
+SpaceBeforeParens: ControlStatements
+SpacesInParens: Custom
+SpacesInParensOptions:
+  InConditionalStatements: true
+  InCStyleCasts: false
+  InEmptyParentheses: false
+  Other: true
+SpaceAfterCStyleCast: true
+DerivePointerAlignment: false
+PointerAlignment: Right
+
+# Preserve include order and the hand-written teaching comments.
+SortIncludes: Never
+ReflowComments: false
