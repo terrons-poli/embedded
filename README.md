@@ -130,3 +130,63 @@ start-up and linker support needed to build loadable programs separately from
 the kernel. Follow the assignment for the exact image layout, shell behaviour,
 error handling, and the requirements of your team's project version; this
 base does not implement or replace that contract.
+
+## Code formatting
+
+The `Formatting` GitHub Actions workflow checks all tracked `.c` and `.h` files
+on every push and when a pull request is opened, updated, or reopened. It can
+also be started manually. A formatting difference fails the `clang-format`
+check. Assembly, linker scripts, and untracked build outputs are outside this
+check.
+
+The workflow uses clang-format 18, which is already available on GitHub's
+Ubuntu 24.04 runner. It does not install packages or build the kernel. Local
+formatting requires clang-format 18 too; the ARM compiler and QEMU are not
+needed. Using the same formatter version avoids differences between local
+results and CI.
+
+Run these commands from the repository root:
+
+```sh
+make format-check  # Report formatting differences without editing files.
+make format        # Apply the rules to all tracked C sources and headers.
+```
+
+If your clang-format 18 executable has another name or location, set it
+explicitly, for example `make CLANG_FORMAT=/path/to/clang-format format-check`.
+New files enter the check after `git add` because the file list comes from Git.
+The same commands run locally and in CI so they check the same files and rules.
+
+Edit `.clang-format` to choose the rules. It starts with LLVM defaults and
+overrides them to use two spaces and an 80-column target. It keeps the project's
+function and control-statement braces on new lines, spaces inside nonempty
+parentheses except casts, and pointers written as `uint32_t *ptr`. Include order
+and comment text are preserved.
+
+`RemoveBracesLLVM: true` removes optional braces from simple `if`, `else`, `for`,
+and `while` bodies. The body stays on its own line. Multiple statements still
+need braces, and clang-format keeps them in some nested cases to avoid ambiguous
+control flow. For example:
+
+```c
+if ( ready )
+  uart_write( buf, len );
+
+while ( pending )
+{
+  process_next();
+  pending = has_more();
+}
+```
+
+Review changes from `make format`, especially brace removal. When you add a
+second statement to an unbraced body, add braces around both statements;
+indentation alone does not make a statement part of an `if` or loop.
+
+Checking every tracked C file makes a rule change apply to the whole project;
+checking only changed lines would leave older code using different rules.
+Existing code may need a one-time `make format` before the first check passes.
+Review and commit the resulting formatting changes along with the rules.
+
+To make a failed check prevent merging, configure a GitHub branch ruleset or
+branch protection rule that requires the `clang-format` status check.
