@@ -158,10 +158,11 @@ New files enter the check after `git add` because the file list comes from Git.
 The same commands run locally and in CI so they check the same files and rules.
 
 Edit `.clang-format` to choose the rules. It starts with LLVM defaults and
-overrides them to use two spaces and an 80-column target. It keeps the project's
+overrides them to use two spaces and no line-length limit. It keeps the project's
 function and control-statement braces on new lines, spaces inside nonempty
 parentheses except casts, and pointers written as `uint32_t *ptr`. Include order
-and comment text are preserved.
+and comment text are preserved. `ColumnLimit: 0` disables the limit explicitly;
+removing that setting would restore LLVM's default of 80 columns.
 
 `RemoveBracesLLVM: true` removes optional braces from simple `if`, `else`, `for`,
 and `while` bodies. The body stays on its own line. Multiple statements still

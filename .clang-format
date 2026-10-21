@@ -5,7 +5,8 @@ BasedOnStyle: LLVM
 IndentWidth: 2
 ContinuationIndentWidth: 2
 UseTab: Never
-ColumnLimit: 80
+# Zero disables the line-length limit; omitting this inherits LLVM's 80 columns.
+ColumnLimit: 0
 
 # Functions and control statements put their opening brace on a new line.
 # Structs and enums keep their opening brace next to the declaration.
