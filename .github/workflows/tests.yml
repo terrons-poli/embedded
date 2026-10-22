@@ -1,0 +1,61 @@
+name: Professor tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    name: Kernel build and big-suite configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate big-suite configuration
+        run: make test-list
+
+      - name: Install ARM compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc-arm-none-eabi
+
+      - name: Build kernel
+        run: make
+
+      - name: Report runtime test status
+        if: ${{ vars.PROFESSOR_TESTS_ENABLED != 'true' }}
+        run: |
+          printf '%s\n' \
+            '### Professor runtime tests are disabled' \
+            'The big-suite configuration was validated and the kernel built.' \
+            'No runtime tests were run. See test-kit/README.md for the missing prerequisites and activation steps.' \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  big-suite:
+    name: Big suite in QEMU
+    needs: build-and-validate
+    # Enable only after make test builds the fixture image and runs all 14 tests.
+    if: ${{ vars.PROFESSOR_TESTS_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install compiler and emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc-arm-none-eabi qemu-system-arm
+
+      - name: Build fixtures and run big suite
+        run: make test
