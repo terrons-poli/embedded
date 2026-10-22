@@ -68,10 +68,12 @@ toolchain and QEMU's ARM system emulator.
   that tool, the target exits with status 2 and prints
   `make image: implement tools/mkimage.py first`. The `programs/` directory is
   present as the input location, but no program build pipeline is supplied.
-- `make test` is intentionally unavailable at this stage. It prints that the
-  common project test kit is not implemented and exits with status 2. The
-  target will be wired to the published kit later; do not treat its current
-  failure as a test result.
+- The professor's [published test kit](test-kit/README.md) is available in
+  `test-kit/`. This project uses the big suite, including all 14 tests.
+  `make test-list` validates its configuration without running QEMU.
+  `make test` still exits with status 2 because the program/image builds and
+  shell/loader integration are not implemented. Do not treat listing the tests
+  as a passing result for the kernel.
 - `make clean` removes the generated `build/` directory, including the kernel,
   map, and image. A later `make run` therefore creates the placeholder image
   again unless you have already generated a real image.
@@ -131,13 +133,23 @@ the kernel. Follow the assignment for the exact image layout, shell behaviour,
 error handling, and the requirements of your team's project version; this
 base does not implement or replace that contract.
 
+## Pull-request validation
+
+The `Professor tests` workflow validates the big-suite configuration and builds
+the kernel on every push and pull request. Its QEMU job is prepared but disabled
+until the program/image build and runtime implementation are ready. The
+[test-kit README](test-kit/README.md#pull-request-checks) explains the missing
+work and how to enable all 14 runtime tests. A successful kernel build alone
+does not mean the professor's tests passed.
+
 ## Code formatting
 
-The `Formatting` GitHub Actions workflow checks all tracked `.c` and `.h` files
+The `Formatting` GitHub Actions workflow checks tracked `.c` and `.h` files
 on every push and when a pull request is opened, updated, or reopened. It can
 also be started manually. A formatting difference fails the `clang-format`
 check. Assembly, linker scripts, and untracked build outputs are outside this
-check.
+check. The professor's supplied programs under `test-kit/` are excluded so
+formatting leaves the published test inputs unchanged.
 
 The workflow uses clang-format 18, which is already available on GitHub's
 Ubuntu 24.04 runner. It does not install packages or build the kernel. Local
@@ -149,7 +161,7 @@ Run these commands from the repository root:
 
 ```sh
 make format-check  # Report formatting differences without editing files.
-make format        # Apply the rules to all tracked C sources and headers.
+make format        # Apply the rules to tracked project C sources and headers.
 ```
 
 If your clang-format 18 executable has another name or location, set it

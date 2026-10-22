@@ -81,7 +81,7 @@ QEMU := qemu-system-arm -machine mps2-an385 -monitor null -nographic -serial std
 QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 
 # These targets are command names, not files on disk.
-.PHONY: all clean image run debug run-trace test format format-check
+.PHONY: all clean image run debug run-trace test test-list format format-check
 
 # Default goal: build the image.
 all: $(BIN)
@@ -138,21 +138,28 @@ debug: $(BIN) $(IMAGE)
 run-trace: $(BIN) $(IMAGE)
 	$(QEMU) -d unimp
 
-# Task 5.2 will publish the common test kit. Do not report a false pass
-# while that suite is intentionally absent.
+# The published kit is in test-kit/, but program/image builds and the
+# shell/loader still need implementing before it can validate the kernel.
+# CI will call this target for the big suite once runtime tests are enabled.
 test:
-	@printf '%s\n' 'make test: unavailable until the common project test kit is implemented (OpenSpec task 5.2).'
+	@printf '%s\n' 'make test: program/image builds and shell/loader integration are not implemented; see test-kit/README.md.'
 	@exit 2
+
+# Validate all big-suite manifests and expected transcripts without running QEMU.
+# This project uses the big suite, which includes all ten common tests.
+test-list:
+	python3 test-kit/run_tests.py --suite big --list
 
 # Remove every generated file, demo and quantum builds included.
 clean:
 	rm -rf build
 
 # Use tracked C sources and headers so build outputs are never formatted.
+# Preserve the professor-supplied test programs as published.
 # NUL separators keep filenames containing spaces intact.
 format:
-	git ls-files -z -- '*.c' '*.h' | xargs -0 $(CLANG_FORMAT) --style=file -i
+	git ls-files -z -- '*.c' '*.h' ':!test-kit/**' | xargs -0 $(CLANG_FORMAT) --style=file -i
 
 # --dry-run leaves files untouched; --Werror makes differences fail the check.
 format-check:
-	git ls-files -z -- '*.c' '*.h' | xargs -0 $(CLANG_FORMAT) --style=file --dry-run --Werror
+	git ls-files -z -- '*.c' '*.h' ':!test-kit/**' | xargs -0 $(CLANG_FORMAT) --style=file --dry-run --Werror
