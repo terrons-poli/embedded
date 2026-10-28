@@ -151,8 +151,20 @@ check. Assembly, linker scripts, and untracked build outputs are outside this
 check. The professor's supplied programs under `test-kit/` are excluded so
 formatting leaves the published test inputs unchanged.
 
-The workflow uses clang-format 18, which is already available on GitHub's
-Ubuntu 24.04 runner. It does not install packages or build the kernel. Local
+The workflow also checks Python scripts, including those under `test-kit/`,
+with Black 26.1.0 in a separate `black` job. It installs Black in an isolated
+Python environment and runs `black --check --diff .`, which reports formatting
+differences without editing files. To use the same version locally:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install black==26.1.0
+.venv/bin/black --check --diff .
+.venv/bin/black .  # Apply Python formatting.
+```
+
+The C formatting job uses clang-format 18, which is already available on GitHub's
+Ubuntu 24.04 runner. It does not install packages or build the kernel. Local C
 formatting requires clang-format 18 too; the ARM compiler and QEMU are not
 needed. Using the same formatter version avoids differences between local
 results and CI.

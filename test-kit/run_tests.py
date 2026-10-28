@@ -12,7 +12,6 @@ import sys
 import tempfile
 import time
 
-
 PROMPT = b"scratch> "
 IMAGE_ADDRESS = "0x00200000"
 
@@ -30,9 +29,15 @@ def parse_args():
     parser.add_argument("--startup-timeout", type=float, default=5.0)
     parser.add_argument("--test-timeout", type=float, default=5.0)
     parser.add_argument("--global-timeout", type=float, default=90.0)
-    parser.add_argument("--test", action="append", dest="selected_tests",
-                        help="run only this named test (repeatable)")
-    parser.add_argument("--list", action="store_true", help="list configured tests and exit")
+    parser.add_argument(
+        "--test",
+        action="append",
+        dest="selected_tests",
+        help="run only this named test (repeatable)",
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="list configured tests and exit"
+    )
     return parser.parse_args()
 
 
@@ -46,7 +51,9 @@ def load_suite(root, name, selected):
         raise TestFailure(f"invalid suite manifest: {path}")
     tests = suite["tests"]
     names = [test.get("name") for test in tests]
-    if any(not isinstance(name, str) or not name for name in names) or len(set(names)) != len(names):
+    if any(not isinstance(name, str) or not name for name in names) or len(
+        set(names)
+    ) != len(names):
         raise TestFailure(f"suite has invalid or duplicate test names: {path}")
     if selected:
         unknown = sorted(set(selected) - set(names))
@@ -67,7 +74,8 @@ def expected_case(root, test):
     except (OSError, json.JSONDecodeError) as error:
         raise TestFailure(f"cannot load expected data {path}: {error}") from error
     if not isinstance(case.get("commands"), list) or not all(
-            isinstance(command, str) for command in case["commands"]):
+        isinstance(command, str) for command in case["commands"]
+    ):
         raise TestFailure(f"invalid commands in {path}")
     if not isinstance(case.get("uart"), str):
         raise TestFailure(f"invalid UART transcript in {path}")
@@ -115,11 +123,21 @@ def mismatch_reason(expected, actual):
     actual_lines = actual.splitlines(keepends=True)
     for line_number, (want, got) in enumerate(zip(expected_lines, actual_lines), 1):
         if want != got:
-            return f"UART mismatch at line {line_number}: expected {want!r}, got {got!r}"
+            return (
+                f"UART mismatch at line {line_number}: expected {want!r}, got {got!r}"
+            )
     if len(expected_lines) != len(actual_lines):
         line_number = min(len(expected_lines), len(actual_lines)) + 1
-        want = expected_lines[line_number - 1] if line_number <= len(expected_lines) else "<end>"
-        got = actual_lines[line_number - 1] if line_number <= len(actual_lines) else "<end>"
+        want = (
+            expected_lines[line_number - 1]
+            if line_number <= len(expected_lines)
+            else "<end>"
+        )
+        got = (
+            actual_lines[line_number - 1]
+            if line_number <= len(actual_lines)
+            else "<end>"
+        )
         return f"UART mismatch at line {line_number}: expected {want!r}, got {got!r}"
     return f"UART mismatch: expected {len(expected)} characters, got {len(actual)}"
 
@@ -127,22 +145,40 @@ def mismatch_reason(expected, actual):
 def run_test(args, root, test, global_deadline):
     case = expected_case(root, test)
     command = [
-        args.qemu, "-machine", "mps2-an385", "-monitor", "null", "-nographic",
-        "-serial", "stdio", "-kernel", str(args.kernel), "-device",
+        args.qemu,
+        "-machine",
+        "mps2-an385",
+        "-monitor",
+        "null",
+        "-nographic",
+        "-serial",
+        "stdio",
+        "-kernel",
+        str(args.kernel),
+        "-device",
         f"loader,file={args.image},addr={IMAGE_ADDRESS},force-raw=on",
     ]
     transcript = bytearray()
     with tempfile.TemporaryFile() as stderr:
         try:
             process = subprocess.Popen(
-                command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr,
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=stderr,
                 bufsize=0,
             )
         except OSError as error:
             raise TestFailure(f"cannot start QEMU: {error}") from error
         try:
-            startup_deadline = min(global_deadline, time.monotonic() + args.startup_timeout)
-            startup_reason = "global timeout during startup" if startup_deadline == global_deadline else "startup timeout waiting for prompt"
+            startup_deadline = min(
+                global_deadline, time.monotonic() + args.startup_timeout
+            )
+            startup_reason = (
+                "global timeout during startup"
+                if startup_deadline == global_deadline
+                else "startup timeout waiting for prompt"
+            )
             read_until(process, transcript, PROMPT, 0, startup_deadline, startup_reason)
             test_deadline = min(global_deadline, time.monotonic() + args.test_timeout)
             for command_text in case["commands"]:
@@ -150,9 +186,15 @@ def run_test(args, root, test, global_deadline):
                     process.stdin.write(command_text.encode("ascii") + b"\n")
                     process.stdin.flush()
                 except (BrokenPipeError, OSError) as error:
-                    raise TestFailure(f"cannot send command {command_text!r}: {error}") from error
+                    raise TestFailure(
+                        f"cannot send command {command_text!r}: {error}"
+                    ) from error
                 before = len(transcript)
-                reason = "global timeout" if test_deadline == global_deadline else f"per-test timeout after command {command_text!r}"
+                reason = (
+                    "global timeout"
+                    if test_deadline == global_deadline
+                    else f"per-test timeout after command {command_text!r}"
+                )
                 read_until(process, transcript, PROMPT, before, test_deadline, reason)
         except TestFailure as error:
             stop_qemu(process)
@@ -168,14 +210,21 @@ def run_test(args, root, test, global_deadline):
     try:
         actual = actual_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
-        raise TestFailure(f"UART output is not UTF-8/ASCII at byte {error.start}") from error
+        raise TestFailure(
+            f"UART output is not UTF-8/ASCII at byte {error.start}"
+        ) from error
     expected = case["uart"]
     if actual != expected:
         reason = mismatch_reason(expected, actual)
-        diff = "".join(difflib.unified_diff(
-            expected.splitlines(keepends=True), actual.splitlines(keepends=True),
-            fromfile="expected", tofile="actual", n=1,
-        )).rstrip()
+        diff = "".join(
+            difflib.unified_diff(
+                expected.splitlines(keepends=True),
+                actual.splitlines(keepends=True),
+                fromfile="expected",
+                tofile="actual",
+                n=1,
+            )
+        ).rstrip()
         raise TestFailure(f"{reason}\n{diff}")
 
 
@@ -222,7 +271,9 @@ def main():
         else:
             print(f"PASS {name}")
             passed += 1
-    print(f"SUMMARY suite={args.suite} passed={passed} failed={failed} total={len(tests)}")
+    print(
+        f"SUMMARY suite={args.suite} passed={passed} failed={failed} total={len(tests)}"
+    )
     return 0 if failed == 0 else 1
 
 
