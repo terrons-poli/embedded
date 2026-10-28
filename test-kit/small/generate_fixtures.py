@@ -13,17 +13,34 @@ DIRECTORY_ENTRY_SIZE = 24
 SFT_HEADER_SIZE = 40
 
 
-def flat_header(*, magic=SFT_MAGIC, version=VERSION, code_size=4,
-                data_size=0, bss_size=0, entry=1, relocations=()):
+def flat_header(
+    *,
+    magic=SFT_MAGIC,
+    version=VERSION,
+    code_size=4,
+    data_size=0,
+    bss_size=0,
+    entry=1,
+    relocations=(),
+):
     initialized = code_size + data_size
     reloc_offset = SFT_HEADER_SIZE + initialized
     file_size = reloc_offset + 4 * len(relocations)
     header = struct.pack(
-        "<10I", magic, version, SFT_HEADER_SIZE, code_size, data_size,
-        bss_size, entry, reloc_offset, len(relocations), file_size)
+        "<10I",
+        magic,
+        version,
+        SFT_HEADER_SIZE,
+        code_size,
+        data_size,
+        bss_size,
+        entry,
+        reloc_offset,
+        len(relocations),
+        file_size,
+    )
     payload = b"\x00" * initialized
-    relocation_data = b"".join(struct.pack("<I", value)
-                                 for value in relocations)
+    relocation_data = b"".join(struct.pack("<I", value) for value in relocations)
     return header + payload + relocation_data
 
 
@@ -41,19 +58,27 @@ def pack_image(programs):
         directory += struct.pack("<II", offset, len(data))
         contents += data
     image_size = content_offset + len(contents)
-    return (struct.pack("<5I", IMAGE_MAGIC, VERSION, image_size,
-                        len(programs), directory_offset)
-            + directory + contents)
+    return (
+        struct.pack(
+            "<5I", IMAGE_MAGIC, VERSION, image_size, len(programs), directory_offset
+        )
+        + directory
+        + contents
+    )
 
 
 def parse_program(specification):
     if "=" not in specification:
         raise ValueError(f"expected NAME=FILE, got {specification!r}")
     name, filename = specification.split("=", 1)
-    if not name or len(name) > 15 or not all(
-            character.isascii()
-            and (character.isalnum() or character in "_-")
-            for character in name):
+    if (
+        not name
+        or len(name) > 15
+        or not all(
+            character.isascii() and (character.isalnum() or character in "_-")
+            for character in name
+        )
+    ):
         raise ValueError(f"invalid IMG1 name {name!r}")
     return name, Path(filename).read_bytes()
 

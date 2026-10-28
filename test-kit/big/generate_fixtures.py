@@ -27,8 +27,9 @@ def headers(data):
 
 def allocated_rel_offset(data):
     _phoff, _phentsize, _phnum, shoff, shentsize, shnum = headers(data)
-    sections = [struct.unpack_from("<10I", data, shoff + i * shentsize)
-                for i in range(shnum)]
+    sections = [
+        struct.unpack_from("<10I", data, shoff + i * shentsize) for i in range(shnum)
+    ]
     for section in sections:
         if section[1] != 9 or section[5] == 0 or section[7] >= shnum:
             continue
@@ -65,11 +66,16 @@ def malformed_elves(source):
 
     bad_reloc = bytearray(source)
     _phoff, _phentsize, _phnum, shoff, shentsize, shnum = headers(bad_reloc)
-    sections = [struct.unpack_from("<10I", bad_reloc, shoff + i * shentsize)
-                for i in range(shnum)]
+    sections = [
+        struct.unpack_from("<10I", bad_reloc, shoff + i * shentsize)
+        for i in range(shnum)
+    ]
     rel_offset = allocated_rel_offset(bad_reloc)
-    target_index = next(section[7] for section in sections
-                        if section[1] == 9 and section[4] == rel_offset)
+    target_index = next(
+        section[7]
+        for section in sections
+        if section[1] == 9 and section[4] == rel_offset
+    )
     target = sections[target_index]
     struct.pack_into("<I", bad_reloc, rel_offset, target[3] + target[5])
     result.append(("bad_reloc", bytes(bad_reloc)))
@@ -80,7 +86,7 @@ def big_only_malformed(source):
     unsupported = bytearray(source)
     rel_offset = allocated_rel_offset(unsupported)
     info = struct.unpack_from("<I", unsupported, rel_offset + 4)[0]
-    struct.pack_into("<I", unsupported, rel_offset + 4, (info & ~0xff) | 3)
+    struct.pack_into("<I", unsupported, rel_offset + 4, (info & ~0xFF) | 3)
 
     phoff, phentsize, phnum, shoff, shentsize, shnum = headers(source)
     segment_ends = []
@@ -96,7 +102,9 @@ def big_only_malformed(source):
     if truncated_size <= phoff + phentsize * phnum:
         raise ValueError("cannot truncate source after its program-header table")
     if shoff + shentsize * shnum <= truncated_size:
-        raise ValueError("source ELF section table does not follow its loadable segments")
+        raise ValueError(
+            "source ELF section table does not follow its loadable segments"
+        )
 
     return [
         ("bad_rel_type", bytes(unsupported)),
@@ -116,7 +124,11 @@ def pack_image(programs):
         directory += struct.pack("<II", offset, len(data))
         contents += data
     size = content_offset + len(contents)
-    return struct.pack("<5I", IMAGE_MAGIC, VERSION, size, len(programs), 20) + directory + contents
+    return (
+        struct.pack("<5I", IMAGE_MAGIC, VERSION, size, len(programs), 20)
+        + directory
+        + contents
+    )
 
 
 def main():
@@ -134,7 +146,9 @@ def main():
     image = pack_image(programs + malformed)
     args.image.parent.mkdir(parents=True, exist_ok=True)
     args.image.write_bytes(image)
-    print(f"IMG1: {args.image} ({len(image)} bytes, {len(programs) + len(malformed)} programs)")
+    print(
+        f"IMG1: {args.image} ({len(image)} bytes, {len(programs) + len(malformed)} programs)"
+    )
 
 
 if __name__ == "__main__":
