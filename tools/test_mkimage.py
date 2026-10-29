@@ -11,7 +11,108 @@ files; ELF parsing and command-line handling are separate responsibilities.
 import struct
 import unittest
 
-from tools.mkimage import pack_into_img
+from tools.mkimage import check_img_size, pack_into_img, validate_inputs
+
+
+class ValidateInputsTests(unittest.TestCase):
+    def test_accepts_program_count_boundaries(self):
+        for count in (1, 32):
+            with self.subTest(count=count):
+                validate_inputs([(f"p{i}", b"x" * 40) for i in range(count)])
+
+    def test_rejects_too_many_programs(self):
+        with self.assertRaisesRegex(Exception, "between 1 and 32 programs"):
+            validate_inputs([(f"p{i}", b"x" * 40) for i in range(33)])
+
+    def test_rejects_zero_programs(self):
+        with self.assertRaises(Exception):
+            validate_inputs([])
+
+    def test_rejects_duplicate_names_even_when_separated(self):
+        for names in (("same", "same"), ("same", "other", "same")):
+            with self.subTest(names=names):
+                with self.assertRaises(Exception):
+                    validate_inputs([(name, b"x" * 40) for name in names])
+
+    def test_accepts_case_distinct_names(self):
+        validate_inputs([("hello", b"a" * 40), ("Hello", b"b" * 40)])
+
+    def test_accepts_allowed_name_characters_and_length_boundaries(self):
+        names = [
+            "x",
+            "ABCDEFGHIJKLMNO",
+            "PQRSTUVWXYZ",
+            "abcdefghijklmno",
+            "pqrstuvwxyz",
+            "0123456789_-",
+        ]
+        for name in names:
+            with self.subTest(name=name):
+                validate_inputs([(name, b"x" * 40)])
+
+    def test_rejects_names_outside_length_limits(self):
+        for name in ("", "a" * 16):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(Exception, "between 1 and 15 characters"):
+                    validate_inputs([(name, b"x" * 40)])
+
+    def test_rejects_disallowed_name_characters(self):
+        for name in (
+            "has space",
+            "has.dot",
+            "path/name",
+            "back\\slash",
+            "has=equals",
+            "has\ttab",
+            "has\nnewline",
+            "nul\0byte",
+            "\x7f",
+            "café",
+            "１",
+            chr(0x1F600),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(Exception, "must only have characters"):
+                    validate_inputs([(name, b"x" * 40)])
+
+    def test_accepts_program_size_boundaries(self):
+        # A single program leaves 20 header bytes and 24 directory bytes.
+        for size in (40, 0x00200000 - 20 - 24):
+            with self.subTest(size=size):
+                validate_inputs([("program", b"x" * size)])
+
+    def test_rejects_program_sizes_outside_limits_in_any_position(self):
+        for size in (0, 1, 39, 0x00200000 - 20 - 24 + 1):
+            for position in (0, 1):
+                programs = [("valid", b"v" * 40)]
+                programs.insert(position, ("invalid", b"x" * size))
+                with self.subTest(size=size, position=position):
+                    with self.assertRaisesRegex(
+                        Exception, "program size must be between"
+                    ):
+                        validate_inputs(programs)
+
+    def test_rejects_invalid_name_after_valid_program(self):
+        with self.assertRaisesRegex(Exception, "must only have characters"):
+            validate_inputs([("valid", b"v" * 40), ("bad.name", b"x" * 40)])
+
+
+class CheckImgSizeTests(unittest.TestCase):
+    # This function checks byte length only. IMG1 structure and padding
+    # generation are covered separately by PackIntoImgTests.
+    def test_accepts_images_at_or_below_size_limit(self):
+        for size in (20, 0x00200000 - 1, 0x00200000):
+            with self.subTest(size=size):
+                check_img_size(bytes(size))
+
+    def test_rejects_images_over_size_limit(self):
+        for size in (0x00200000 + 1, 0x00200000 + 3):
+            with self.subTest(size=size):
+                with self.assertRaisesRegex(
+                    Exception,
+                    f"^IMG1 image must not exceed 2 MiB, actual size = {size} bytes$",
+                ):
+                    check_img_size(bytes(size))
 
 
 class PackIntoImgTests(unittest.TestCase):
