@@ -1,10 +1,43 @@
+from string import ascii_letters, digits
+
 IMG1_HEADER_SIZE = 20
 IMG1_DIRECTORY_SIZE = 24
 VERSION = 1
 
+PROGRAM_VOCABULARY = ascii_letters + digits + "_-"
+
 
 def _encode_int(n: int) -> bytes:
     return n.to_bytes(4, "little")
+
+
+def _check_program_name(name: str):
+    if name == "" or len(name) > 15:
+        raise Exception(f"program name must have between 1 and 15 characters: '{name}'")
+    for c in name:
+        if c not in PROGRAM_VOCABULARY:
+            raise Exception(
+                f"program name must only have characters in '{PROGRAM_VOCABULARY}': '{name}'"
+            )
+
+
+def _check_program_size(name: str, program: bytes):
+    if (
+        len(program) < 40
+        or len(program) > 2**21 - IMG1_HEADER_SIZE - IMG1_DIRECTORY_SIZE
+    ):
+        raise Exception(
+            f"program size must be between 40 B and 2 MiB: '{name}' is {len(program)} bytes long"
+        )
+
+
+def validate_inputs(programs_tuples: list[tuple[str, bytes]]):
+    if len(programs_tuples) > 32:
+        raise Exception(f"packer accepts 32 programs at most: {len(programs_tuples)}")
+
+    for name, program in programs_tuples:
+        _check_program_name(name)
+        _check_program_size(name, program)
 
 
 def pack_into_img(programs_tuples: list[tuple[str, bytes]]) -> bytes:
@@ -74,3 +107,10 @@ def pack_into_img(programs_tuples: list[tuple[str, bytes]]) -> bytes:
     img[8:12] = _encode_int(len(img))
 
     return bytes(img)
+
+
+def check_img_size(img: bytes):
+    if len(img) > 2**21:
+        raise Exception(
+            f"img file must not exceed 2 Mib, actual size = {len(img)} bytes"
+        )
