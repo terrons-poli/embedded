@@ -135,6 +135,17 @@ base does not implement or replace that contract.
 
 ## Pull-request validation
 
+The host-tool unit tests check IMG1 packing and input limits against
+[the assignment](ASSIGNMENT.md#61-the-image-img1). They run in CI without an
+ARM compiler or QEMU. Run them locally with Python's standard library:
+
+```sh
+python3 -m unittest discover -s tools -v
+```
+
+For example, the tests check that a 41-byte file is followed by three zero
+padding bytes before the next file, while its directory size stays 41.
+
 The `Professor tests` workflow validates the big-suite configuration and builds
 the kernel on every push and pull request. Its QEMU job is prepared but disabled
 until the program/image build and runtime implementation are ready. The
