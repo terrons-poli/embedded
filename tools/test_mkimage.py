@@ -87,7 +87,9 @@ class ValidateInputsTests(unittest.TestCase):
                 programs = [("valid", b"v" * 40)]
                 programs.insert(position, ("invalid", b"x" * size))
                 with self.subTest(size=size, position=position):
-                    with self.assertRaisesRegex(Exception, "program size must be between"):
+                    with self.assertRaisesRegex(
+                        Exception, "program size must be between"
+                    ):
                         validate_inputs(programs)
 
     def test_rejects_invalid_name_after_valid_program(self):

@@ -33,7 +33,9 @@ def _check_program_size(name: str, program: bytes):
 
 def validate_inputs(programs_tuples: list[tuple[str, bytes]]):
     if len(programs_tuples) == 0 or len(programs_tuples) > 32:
-        raise Exception(f"packer accepts between 1 and 32 programs: {len(programs_tuples)}")
+        raise Exception(
+            f"packer accepts between 1 and 32 programs: {len(programs_tuples)}"
+        )
 
     names = {}
 
