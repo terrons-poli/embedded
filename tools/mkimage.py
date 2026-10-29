@@ -32,12 +32,18 @@ def _check_program_size(name: str, program: bytes):
 
 
 def validate_inputs(programs_tuples: list[tuple[str, bytes]]):
-    if len(programs_tuples) > 32:
-        raise Exception(f"packer accepts 32 programs at most: {len(programs_tuples)}")
+    if len(programs_tuples) == 0 or len(programs_tuples) > 32:
+        raise Exception(f"packer accepts between 1 and 32 programs: {len(programs_tuples)}")
+
+    names = {}
 
     for name, program in programs_tuples:
         _check_program_name(name)
         _check_program_size(name, program)
+
+        if name in names:
+            raise Exception(f"cannot accept duplicate program names: '{name}'")
+        names[name] = 1
 
 
 def pack_into_img(programs_tuples: list[tuple[str, bytes]]) -> bytes:
@@ -112,5 +118,5 @@ def pack_into_img(programs_tuples: list[tuple[str, bytes]]) -> bytes:
 def check_img_size(img: bytes):
     if len(img) > 2**21:
         raise Exception(
-            f"img file must not exceed 2 Mib, actual size = {len(img)} bytes"
+            f"IMG1 image must not exceed 2 MiB, actual size = {len(img)} bytes"
         )
