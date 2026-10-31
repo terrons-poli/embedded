@@ -1,5 +1,7 @@
 from string import ascii_letters, digits
 import argparse
+import os
+import tempfile
 from pathlib import Path
 
 IMG1_HEADER_SIZE = 20
@@ -145,7 +147,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "image", help="pack programs into an IMG1 (provide them as NAME=ELF)"
     )
     image_parser.add_argument("output", type=Path)
-    image_parser.add_argument("program", nargs="+")
+    # REMAINDER keeps NAME=FILE tokens whose name starts with "-" (allowed by
+    # IMG1) from being parsed as options.
+    image_parser.add_argument("program", nargs=argparse.REMAINDER)
 
     return parser
 
@@ -158,6 +162,8 @@ def parse_args(argv: list[str] | None = None) -> tuple[Path, list[tuple[str, byt
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if not args.program:
+        parser.error("the following arguments are required: program")
 
     try:
         programs = [parse_program(item) for item in args.program]
@@ -168,13 +174,31 @@ def parse_args(argv: list[str] | None = None) -> tuple[Path, list[tuple[str, byt
     return args.output, programs
 
 
+def _write_atomically(output: Path, data: bytes):
+    """Replace `output` with `data` only once the new file is complete.
+
+    The temporary file sits beside `output` so that os.replace stays on one
+    filesystem. On failure it is removed and any previous `output` is kept.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=output.parent, prefix=f".{output.name}.")
+    try:
+        with os.fdopen(fd, "wb") as tmp:
+            tmp.write(data)
+            # mkstemp creates the file as 0600; use the usual mode for outputs.
+            os.fchmod(tmp.fileno(), 0o644)
+        os.replace(tmp_name, output)
+    except BaseException:
+        os.unlink(tmp_name)
+        raise
+
+
 def main(argv: list[str] | None = None):
     output, programs = parse_args(argv)
 
     try:
         img = pack_into_img(programs)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(img)
+        _write_atomically(output, img)
     except (ValueError, OSError) as e:
         _build_parser().error(str(e))
 
