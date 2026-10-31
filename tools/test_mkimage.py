@@ -18,11 +18,11 @@ class ValidateInputsTests(unittest.TestCase):
     def test_accepts_program_count_boundaries(self):
         for count in (1, 32):
             with self.subTest(count=count):
-                validate_inputs([(f"p{i}", b"x" * 40) for i in range(count)])
+                validate_inputs([(f"p{i}", b"x" * 52) for i in range(count)])
 
     def test_rejects_too_many_programs(self):
         with self.assertRaisesRegex(Exception, "between 1 and 32 programs"):
-            validate_inputs([(f"p{i}", b"x" * 40) for i in range(33)])
+            validate_inputs([(f"p{i}", b"x" * 52) for i in range(33)])
 
     def test_rejects_zero_programs(self):
         with self.assertRaises(Exception):
@@ -32,10 +32,10 @@ class ValidateInputsTests(unittest.TestCase):
         for names in (("same", "same"), ("same", "other", "same")):
             with self.subTest(names=names):
                 with self.assertRaises(Exception):
-                    validate_inputs([(name, b"x" * 40) for name in names])
+                    validate_inputs([(name, b"x" * 52) for name in names])
 
     def test_accepts_case_distinct_names(self):
-        validate_inputs([("hello", b"a" * 40), ("Hello", b"b" * 40)])
+        validate_inputs([("hello", b"a" * 52), ("Hello", b"b" * 52)])
 
     def test_accepts_allowed_name_characters_and_length_boundaries(self):
         names = [
@@ -48,13 +48,13 @@ class ValidateInputsTests(unittest.TestCase):
         ]
         for name in names:
             with self.subTest(name=name):
-                validate_inputs([(name, b"x" * 40)])
+                validate_inputs([(name, b"x" * 52)])
 
     def test_rejects_names_outside_length_limits(self):
         for name in ("", "a" * 16):
             with self.subTest(name=name):
                 with self.assertRaisesRegex(Exception, "between 1 and 15 characters"):
-                    validate_inputs([(name, b"x" * 40)])
+                    validate_inputs([(name, b"x" * 52)])
 
     def test_rejects_disallowed_name_characters(self):
         for name in (
@@ -73,18 +73,18 @@ class ValidateInputsTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 with self.assertRaisesRegex(Exception, "must only have characters"):
-                    validate_inputs([(name, b"x" * 40)])
+                    validate_inputs([(name, b"x" * 52)])
 
     def test_accepts_program_size_boundaries(self):
         # A single program leaves 20 header bytes and 24 directory bytes.
-        for size in (40, 0x00200000 - 20 - 24):
+        for size in (52, 0x00200000 - 20 - 24):
             with self.subTest(size=size):
                 validate_inputs([("program", b"x" * size)])
 
     def test_rejects_program_sizes_outside_limits_in_any_position(self):
-        for size in (0, 1, 39, 0x00200000 - 20 - 24 + 1):
+        for size in (*range(52), 0x00200000 - 20 - 24 + 1):
             for position in (0, 1):
-                programs = [("valid", b"v" * 40)]
+                programs = [("valid", b"v" * 52)]
                 programs.insert(position, ("invalid", b"x" * size))
                 with self.subTest(size=size, position=position):
                     with self.assertRaisesRegex(
@@ -94,7 +94,7 @@ class ValidateInputsTests(unittest.TestCase):
 
     def test_rejects_invalid_name_after_valid_program(self):
         with self.assertRaisesRegex(Exception, "must only have characters"):
-            validate_inputs([("valid", b"v" * 40), ("bad.name", b"x" * 40)])
+            validate_inputs([("valid", b"v" * 52), ("bad.name", b"x" * 52)])
 
 
 class CheckImgSizeTests(unittest.TestCase):
