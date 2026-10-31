@@ -1,4 +1,6 @@
 from string import ascii_letters, digits
+import argparse
+from pathlib import Path
 
 IMG1_HEADER_SIZE = 20
 IMG1_DIRECTORY_SIZE = 24
@@ -122,3 +124,62 @@ def check_img_size(img: bytes):
         raise Exception(
             f"IMG1 image must not exceed 2 MiB, actual size = {len(img)} bytes"
         )
+
+
+def parse_program(spec: str):
+    if "=" not in spec:
+        raise ValueError(f"expected NAME=FILE, got {spec!r}")
+    name, filename = spec.split("=", 1)
+    if not name:
+        raise ValueError(f"expected NAME=FILE, got '={filename}'")
+    if not filename:
+        raise ValueError(f"expected NAME=FILE, got '{name}='")
+    return name, Path(filename).read_bytes()
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="mkimage.py")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    image_parser = commands.add_parser(
+        "image", help="pack programs into an IMG1 (provide them as NAME=ELF)"
+    )
+    image_parser.add_argument("output", type=Path)
+    image_parser.add_argument("program", nargs="+")
+
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> tuple[Path, list[tuple[str, bytes]]]:
+    """Parse the `image` command and return the output path and program tuples.
+
+    Bad arguments, unreadable files and invalid IMG1 inputs exit through
+    argparse with `mkimage.py: error: <reason>` and status 2.
+    """
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        programs = [parse_program(item) for item in args.program]
+        validate_inputs(programs)
+    except Exception as e:
+        parser.error(str(e))
+
+    return args.output, programs
+
+
+def main(argv: list[str] | None = None):
+    output, programs = parse_args(argv)
+
+    try:
+        img = pack_into_img(programs)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(img)
+    except (ValueError, OSError) as e:
+        _build_parser().error(str(e))
+
+    print(f"IMG1: {output} ({len(img)} bytes, {len(programs)} programs)")
+
+
+if __name__ == "__main__":
+    main()
