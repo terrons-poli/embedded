@@ -6,6 +6,7 @@ from pathlib import Path
 
 IMG1_HEADER_SIZE = 20
 IMG1_DIRECTORY_SIZE = 24
+ELF32_HEADER_SIZE = 52
 VERSION = 1
 
 PROGRAM_VOCABULARY = ascii_letters + digits + "_-"
@@ -26,12 +27,13 @@ def _check_program_name(name: str):
 
 
 def _check_program_size(name: str, program: bytes):
+    # ELF inputs need a complete ELF32 header; IMG1 itself permits 40 bytes.
     if (
-        len(program) < 40
+        len(program) < ELF32_HEADER_SIZE
         or len(program) > 2**21 - IMG1_HEADER_SIZE - IMG1_DIRECTORY_SIZE
     ):
         raise Exception(
-            f"program size must be between 40 B and 2 MiB: '{name}' is {len(program)} bytes long"
+            f"program size must be between {ELF32_HEADER_SIZE} B and 2 MiB: '{name}' is {len(program)} bytes long"
         )
 
 

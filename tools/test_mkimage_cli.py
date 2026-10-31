@@ -53,6 +53,17 @@ class ImageCommandTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from("<I", image, 12)[0], 1)
         self.assertEqual(image[20:36], b"-ok".ljust(16, b"\0"))
 
+    def test_rejects_inputs_shorter_than_elf32_header(self):
+        output = self.dir / "fs.img"
+        for size in (40, 48, 51):
+            with self.subTest(size=size):
+                self.program.write_bytes(b"p" * size)
+                result = run_mkimage("image", output, f"prog={self.program}")
+
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("program size must be between 52 B", result.stderr)
+                self.assertFalse(output.exists())
+
     def test_requires_at_least_one_program(self):
         output = self.dir / "fs.img"
         result = run_mkimage("image", output)
