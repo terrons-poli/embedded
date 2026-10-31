@@ -21,17 +21,17 @@ class ValidateInputsTests(unittest.TestCase):
                 validate_inputs([(f"p{i}", b"x" * 40) for i in range(count)])
 
     def test_rejects_too_many_programs(self):
-        with self.assertRaisesRegex(Exception, "between 1 and 32 programs"):
+        with self.assertRaisesRegex(ValueError, "between 1 and 32 programs"):
             validate_inputs([(f"p{i}", b"x" * 40) for i in range(33)])
 
     def test_rejects_zero_programs(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):
             validate_inputs([])
 
     def test_rejects_duplicate_names_even_when_separated(self):
         for names in (("same", "same"), ("same", "other", "same")):
             with self.subTest(names=names):
-                with self.assertRaises(Exception):
+                with self.assertRaises(ValueError):
                     validate_inputs([(name, b"x" * 40) for name in names])
 
     def test_accepts_case_distinct_names(self):
@@ -53,7 +53,7 @@ class ValidateInputsTests(unittest.TestCase):
     def test_rejects_names_outside_length_limits(self):
         for name in ("", "a" * 16):
             with self.subTest(name=name):
-                with self.assertRaisesRegex(Exception, "between 1 and 15 characters"):
+                with self.assertRaisesRegex(ValueError, "invalid IMG1 name"):
                     validate_inputs([(name, b"x" * 40)])
 
     def test_rejects_disallowed_name_characters(self):
@@ -72,7 +72,7 @@ class ValidateInputsTests(unittest.TestCase):
             chr(0x1F600),
         ):
             with self.subTest(name=name):
-                with self.assertRaisesRegex(Exception, "must only have characters"):
+                with self.assertRaisesRegex(ValueError, "invalid IMG1 name"):
                     validate_inputs([(name, b"x" * 40)])
 
     def test_accepts_program_size_boundaries(self):
@@ -88,13 +88,23 @@ class ValidateInputsTests(unittest.TestCase):
                 programs.insert(position, ("invalid", b"x" * size))
                 with self.subTest(size=size, position=position):
                     with self.assertRaisesRegex(
-                        Exception, "program size must be between"
+                        ValueError, "at least 40 bytes|image exceeds 2 MiB"
                     ):
                         validate_inputs(programs)
 
     def test_rejects_invalid_name_after_valid_program(self):
-        with self.assertRaisesRegex(Exception, "must only have characters"):
+        with self.assertRaisesRegex(ValueError, "invalid IMG1 name"):
             validate_inputs([("valid", b"v" * 40), ("bad.name", b"x" * 40)])
+
+    def test_accepts_total_image_size_at_limit(self):
+        # The second program starts at 112 after three padding bytes.
+        validate_inputs([("first", b"a" * 41), ("last", b"b" * (0x00200000 - 112))])
+
+    def test_total_size_limit_includes_directories_and_alignment(self):
+        for last_size in (0x00200000 - 112 + 1, 0x00200000 - 68 - 41):
+            with self.subTest(last_size=last_size):
+                with self.assertRaisesRegex(ValueError, "image exceeds 2 MiB"):
+                    validate_inputs([("first", b"a" * 41), ("last", b"b" * last_size)])
 
 
 class CheckImgSizeTests(unittest.TestCase):
