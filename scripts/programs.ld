@@ -35,5 +35,7 @@ SECTIONS {
     /DISCARD/ : {
         *(.ARM.exidx* .ARM.attributes .comment)
     }
+
+    ASSERT(. <= 3072, "program longer than 3072 bytes")
 }
 
