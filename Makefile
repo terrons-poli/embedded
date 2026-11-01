@@ -22,6 +22,18 @@ IMAGE_ADDR := 0x00200000
 IMAGE_TOOL ?= tools/mkimage.py
 PROGRAM_DIR ?= programs
 
+PROG_BUILD_DIR := $(BUILD_DIR)/programs
+# wildcard to avoid make to enter in subdirectories of PROGRAM_DIR
+PROG_SOURCES := $(wildcard $(PROGRAM_DIR)/*.c)
+# notdir only takes the filename, basename excludes the extension
+PROG_NAMES := $(basename $(notdir $(PROG_SOURCES)))
+# Takes PROG_NAMES and makes PROG_BUILD_DIR/PROG_NAMES.elf
+PROG_ELFS := $(patsubst %, $(PROG_BUILD_DIR)/%.elf, $(PROG_NAMES))
+
+# Every program links its own copy of these (R1: no code shared with the kernel)
+PROG_RUNTIME := $(PROGRAM_DIR)/runtime/start.s lib/syscalls.s lib/printf.c lib/format.c
+PROG_RUNTIME_OBJS := $(patsubst %, $(PROG_BUILD_DIR)/obj/%.o, $(basename $(PROG_RUNTIME)))
+
 # The folders that hold our source files, one folder per OS layer.
 SRC_DIRS := boot kernel drivers lib src
 # Find every .c file (C code) and every .s file (assembly) in those
@@ -65,6 +77,10 @@ CFLAGS += -O0 -g3
 # as if kernel/task.h had `#define QUANTUM 5`.
 CFLAGS += -DQUANTUM=$(QUANTUM)
 
+# -I. for example #include "lib/printf.h"
+PROG_CFLAGS := -mthumb -mcpu=cortex-m3 -ffreestanding -std=gnu17 -I. -fno-builtin
+PROG_CFLAGS += -Wall -Wextra -O0 -g3
+
 # Use our linker script instead of the toolchain's default.
 LDFLAGS := -T scripts/mps2_m3.ld
 # Also write a map file: it shows which symbol landed at which address.
@@ -74,6 +90,8 @@ LDFLAGS += -Xlinker -Map=$(BUILD_DIR)/output.map
 # example software integer division, which the compiler may use alone).
 LDFLAGS += -nostdlib -lgcc
 
+PROG_LDFLAGS := -T scripts/programs.ld -Wl,--emit-relocs -nostdlib
+
 # The command line that starts QEMU: the MPS2-AN385 board, no monitor
 # console, no window, UART0 connected to this terminal, our image as
 # the program. There is no semihosting: all output goes through the UART.
@@ -81,10 +99,28 @@ QEMU := qemu-system-arm -machine mps2-an385 -monitor null -nographic -serial std
 QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 
 # These targets are command names, not files on disk.
-.PHONY: all clean image run debug run-trace test test-list format format-check
+.PHONY: all clean image run debug run-trace test test-list format format-check programs
 
 # Default goal: build the image.
 all: $(BIN)
+
+# Compile a program source or runtime file with the program flags
+$(PROG_BUILD_DIR)/obj/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(PROG_CFLAGS) -c $< -o $@
+
+$(PROG_BUILD_DIR)/obj/%.o: %.s
+	@mkdir -p $(dir $@)
+	$(CC) $(PROG_CFLAGS) -c $< -o $@
+
+# Link one program with its own runtime. -lgcc goes last so the linker
+# sees which helpers the objects need before it searches the library
+$(PROG_BUILD_DIR)/%.elf: $(PROG_BUILD_DIR)/obj/$(PROGRAM_DIR)/%.o $(PROG_RUNTIME_OBJS) scripts/programs.ld
+	$(CC) $(PROG_CFLAGS) $(PROG_LDFLAGS) $(filter %.o, $^) -lgcc -o $@
+
+# build every program in programs/ without packing them
+programs: $(PROG_ELFS)
+
 
 # Compile one .c file to a .o file, creating its build folder first.
 $(BUILD_DIR)/%.o: %.c
@@ -103,19 +139,14 @@ $(BUILD_DIR)/%.o: %.s
 $(BIN): $(OBJECTS) scripts/mps2_m3.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECTS) -o $(BIN)
 
-# Temporary valid raw image for QEMU's generic loader. The project packer
-# will replace this recipe once the image format contract is implemented.
-$(IMAGE):
-	@mkdir -p $(dir $@)
-	@printf 'SCRATCH-OS-PROJECT-IMAGE\n' > $@
+# Pack every program into the IMG1 image as NAME=build/programs/NAME.elf
+# The file name is the IMG1 name, so it must follow the IMG1 rules.
+$(IMAGE): $(PROG_ELFS) $(IMAGE_TOOL)
+	@test -n "$(PROG_NAMES)" || { printf '%s\n' 'make image: no programs in $(PROGRAM_DIR)/'; exit 2; }
+	python3 $(IMAGE_TOOL) image $@ $(foreach p, $(PROG_NAMES), $(p)=$(PROG_BUILD_DIR)/$(p).elf)
 
-# The host tool is student work. Once it exists, this target rebuilds the
-# image from every program in programs/. The separate $(IMAGE) rule above
-# remains the bootable placeholder used by an untouched project base.
-image: $(BIN)
-	@test -f $(IMAGE_TOOL) || { printf '%s\n' 'make image: implement tools/mkimage.py first'; exit 2; }
-	@test -d $(PROGRAM_DIR) || { printf '%s\n' 'make image: programs/ is missing'; exit 2; }
-	python3 $(IMAGE_TOOL) --output $(IMAGE) $(PROGRAM_DIR)
+# Build the kernel and the image
+image: $(BIN) $(IMAGE)
 
 # Build, load the image at its fixed FLASH address, then run in QEMU.
 run: $(BIN) $(IMAGE)
