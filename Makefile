@@ -33,6 +33,11 @@ PROG_ELFS := $(patsubst %, $(PROG_BUILD_DIR)/%.elf, $(PROG_NAMES))
 # Every program links its own copy of these (R1: no code shared with the kernel)
 PROG_RUNTIME := $(PROGRAM_DIR)/runtime/start.s lib/syscalls.s lib/printf.c lib/format.c
 PROG_RUNTIME_OBJS := $(patsubst %, $(PROG_BUILD_DIR)/obj/%.o, $(basename $(PROG_RUNTIME)))
+PROG_OBJS := $(patsubst %, $(PROG_BUILD_DIR)/obj/$(PROGRAM_DIR)/%.o, $(PROG_NAMES))
+# Header dependencies that -MMD writes next to each object
+PROG_DEPS := $(patsubst %.o, %.d, $(PROG_OBJS) $(PROG_RUNTIME_OBJS))
+# The current program names, so adding or removing a program repacks the image
+PROG_LIST := $(PROG_BUILD_DIR)/names.txt
 
 # The folders that hold our source files, one folder per OS layer.
 SRC_DIRS := boot kernel drivers lib src
@@ -80,6 +85,9 @@ CFLAGS += -DQUANTUM=$(QUANTUM)
 # -I. for example #include "lib/printf.h"
 PROG_CFLAGS := -mthumb -mcpu=cortex-m3 -ffreestanding -std=gnu17 -I. -fno-builtin
 PROG_CFLAGS += -Wall -Wextra -O0 -g3
+# -MMD -MP: also write NAME.d, listing the headers each object includes, so
+# editing a header rebuilds the programs that use it
+PROG_CFLAGS += -MMD -MP
 
 # Use our linker script instead of the toolchain's default.
 LDFLAGS := -T scripts/mps2_m3.ld
@@ -121,6 +129,22 @@ $(PROG_BUILD_DIR)/%.elf: $(PROG_BUILD_DIR)/obj/$(PROGRAM_DIR)/%.o $(PROG_RUNTIME
 # build every program in programs/ without packing them
 programs: $(PROG_ELFS)
 
+# Keep the program objects: make would delete them as intermediate files,
+# and the header dependencies in their .d files need them to exist. A
+# pattern, because an empty `.SECONDARY:` would apply to every target
+.PRECIOUS: $(PROG_BUILD_DIR)/obj/%.o
+
+# Included after `all` so that the rules in the .d files do not become the
+# default goal. The leading "-" skips the files a clean build has not written
+-include $(PROG_DEPS)
+
+# Rewrite the list only when the names change, so its date tells make
+# when a program was added or removed. FORCE runs this check every time
+$(PROG_LIST): FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' $(PROG_NAMES) | cmp -s - $@ || printf '%s\n' $(PROG_NAMES) > $@
+
+FORCE:
 
 # Compile one .c file to a .o file, creating its build folder first.
 $(BUILD_DIR)/%.o: %.c
@@ -141,7 +165,8 @@ $(BIN): $(OBJECTS) scripts/mps2_m3.ld
 
 # Pack every program into the IMG1 image as NAME=build/programs/NAME.elf
 # The file name is the IMG1 name, so it must follow the IMG1 rules.
-$(IMAGE): $(PROG_ELFS) $(IMAGE_TOOL)
+# $(PROG_LIST) repacks the image when a program is removed.
+$(IMAGE): $(PROG_ELFS) $(PROG_LIST) $(IMAGE_TOOL)
 	@test -n "$(PROG_NAMES)" || { printf '%s\n' 'make image: no programs in $(PROGRAM_DIR)/'; exit 2; }
 	python3 $(IMAGE_TOOL) image $@ $(foreach p, $(PROG_NAMES), $(p)=$(PROG_BUILD_DIR)/$(p).elf)
 
