@@ -39,6 +39,13 @@ PROG_DEPS := $(patsubst %.o, %.d, $(PROG_OBJS) $(PROG_RUNTIME_OBJS))
 # The current program names, so adding or removing a program repacks the image
 PROG_LIST := $(PROG_BUILD_DIR)/names.txt
 
+# Keep the published test programs separate from the normal program image.
+TEST_BUILD_DIR := $(BUILD_DIR)/test-kit
+TEST_SOURCES := $(wildcard test-kit/small/programs/*.c test-kit/big/programs/*.c)
+TEST_OBJS := $(patsubst test-kit/%.c,$(TEST_BUILD_DIR)/%.o,$(TEST_SOURCES))
+TEST_ELFS := $(TEST_OBJS:.o=.elf)
+TEST_IMAGE := $(TEST_BUILD_DIR)/big/fs.img
+
 # The folders that hold our source files, one folder per OS layer.
 SRC_DIRS := boot kernel drivers lib src
 # Find every .c file (C code) and every .s file (assembly) in those
@@ -136,7 +143,7 @@ programs: $(PROG_ELFS)
 
 # Included after `all` so that the rules in the .d files do not become the
 # default goal. The leading "-" skips the files a clean build has not written
--include $(PROG_DEPS)
+-include $(PROG_DEPS) $(TEST_OBJS:.o=.d)
 
 # Rewrite the list only when the names change, so its date tells make
 # when a program was added or removed. FORCE runs this check every time
@@ -194,12 +201,35 @@ debug: $(BIN) $(IMAGE)
 run-trace: $(BIN) $(IMAGE)
 	$(QEMU) -d unimp
 
-# The published kit is in test-kit/, but program/image builds and the
-# shell/loader still need implementing before it can validate the kernel.
-# CI will call this target for the big suite once runtime tests are enabled.
-test:
-	@printf '%s\n' 'make test: program/image builds and shell/loader integration are not implemented; see test-kit/README.md.'
-	@exit 2
+# Use the same ABI and runtime as normal programs, including ELF relocations.
+$(TEST_BUILD_DIR)/%.o: test-kit/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(PROG_CFLAGS) -c $< -o $@
+
+$(TEST_BUILD_DIR)/%.elf: $(TEST_BUILD_DIR)/%.o $(PROG_RUNTIME_OBJS) scripts/programs.ld
+	$(CC) $(PROG_CFLAGS) $(PROG_LDFLAGS) $(filter %.o, $^) -lgcc -o $@
+
+# Keep intermediate objects so header dependencies support incremental builds.
+.SECONDARY: $(TEST_OBJS)
+
+# print_plain must come first: the generator uses it for malformed ELF files.
+# IMG1 names follow the suite commands, which sometimes differ from source names.
+$(TEST_IMAGE): $(TEST_ELFS) test-kit/big/generate_fixtures.py
+	python3 test-kit/big/generate_fixtures.py \
+		--output-dir $(TEST_BUILD_DIR)/big/files --image $@ \
+		print_plain=$(TEST_BUILD_DIR)/small/programs/print_plain.elf \
+		global_state=$(TEST_BUILD_DIR)/small/programs/globals_bss_const.elf \
+		thumb_ptr=$(TEST_BUILD_DIR)/small/programs/thumb_function_pointer.elf \
+		nonzero_slot=$(TEST_BUILD_DIR)/small/programs/nonzero_slot_relocation.elf \
+		normal_return=$(TEST_BUILD_DIR)/small/programs/normal_return.elf \
+		explicit_exit=$(TEST_BUILD_DIR)/small/programs/explicit_exit.elf \
+		kernel_store=$(TEST_BUILD_DIR)/small/programs/kernel_store.elf \
+		wx_write_code=$(TEST_BUILD_DIR)/big/programs/wx_write_code.elf \
+		wx_exec_data=$(TEST_BUILD_DIR)/big/programs/wx_exec_data.elf
+
+# Build the kernel and fixtures before comparing the big-suite UART transcripts.
+test: $(BIN) $(TEST_IMAGE)
+	python3 test-kit/run_tests.py --suite big --kernel $(BIN) --image $(TEST_IMAGE)
 
 # Validate all big-suite manifests and expected transcripts without running QEMU.
 # This project uses the big suite, which includes all ten common tests.
