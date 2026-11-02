@@ -3,6 +3,17 @@
 */
 ENTRY(_start)
 
+/* Offsets within a program slot, linked at address 0.
+ * Code, data and BSS use the lower 3 KiB; the upper 1 KiB is the
+ * downward-growing stack. The loader adds the slot base to the stack
+ * top and passes it to the kernel, which prepares the initial frames.
+ * Symbols describe this space without adding it to a PT_LOAD segment.
+ */
+PROGRAM_SLOT_SIZE = 4096;
+PROGRAM_STACK_SIZE = 1024;
+__stack_top = PROGRAM_SLOT_SIZE;
+__stack_limit = __stack_top - PROGRAM_STACK_SIZE;
+
 
 /* PHDRS defines ELF segments (program header). MPU will use them for permissions */
 PHDRS {
@@ -36,6 +47,6 @@ SECTIONS {
         *(.ARM.exidx* .ARM.attributes .comment)
     }
 
-    ASSERT(. <= 3072, "program longer than 3072 bytes")
+    ASSERT(. <= __stack_limit, "program overlaps the reserved 1 KiB stack")
 }
 
