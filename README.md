@@ -226,3 +226,49 @@ Review and commit the resulting formatting changes along with the rules.
 
 To make a failed check prevent merging, configure a GitHub branch ruleset or
 branch protection rule that requires the `clang-format` status check.
+
+## IMG1 kernel validation
+
+`kernel/loader.c` implements the header and directory checks from assignment
+section 6.1. Call `img1_validate(IMG1, IMG1_MAX_SIZE)` for the fixed FLASH image,
+or pass a buffer and its readable byte count. It returns 1 for a valid image
+and 0 for an invalid image, without writing to the buffer, copying the image,
+allocating memory, or printing diagnostics. The future system-call and shell
+handlers must translate this result into the assignment's `ls` and `run`
+errors. These handlers are not integrated by this parser change.
+
+The validator checks the readable header first, then the declared image size
+and directory bounds, and only then reads directory entries. File ranges use
+subtraction after checking the offset so an overflowing offset plus size cannot
+bypass validation. Each entry is compared with earlier entries for duplicate
+names and overlapping files. At most 32 entries means at most 496 comparisons,
+which avoids sorting, extra storage, or changing the read-only directory.
+
+Byte-by-byte little-endian decoding works even for unaligned input buffers.
+Directly casting bytes to the header structures would be shorter, but would
+require alignment and matching host byte order. The structures still document
+the format, with compile-time size checks. Valid gaps, unsorted entries, odd
+file sizes, and ignored bytes after a name's first NUL are supported. For
+example, a directory at byte 24 with one 24-byte entry may point to a 41-byte
+file at byte 48. Program contents are checked separately during loading; a
+valid IMG1 directory does not imply that its files are valid ELF programs.
+
+Run the parser regression tests alone or together with the host-tool tests:
+
+```sh
+python3 -m unittest discover -s tools -p test_loader.py -v
+python3 -m unittest discover -s tools -v
+make all image
+make test-list
+make format-check
+```
+
+The parser tests require a native C17 compiler, selected with `HOST_CC` if it is
+not named `cc`. They compile the real kernel parser into a temporary shared
+library and call it on valid and malformed byte buffers, including unaligned
+buffers. Tests cover every PR #42 finding, boundary sizes, wrapping offsets,
+truncated buffers, and permitted layouts. CI's Ubuntu runner supplies the native
+compiler. These tests verify parsing on the host; they do not test ARM execution
+or shell behavior. The published 14-test big QEMU suite still requires the
+unfinished shell, program loader, system-call and MPU integration described in
+[test-kit/README.md](test-kit/README.md).
