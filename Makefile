@@ -202,7 +202,8 @@ run-trace: $(BIN) $(IMAGE)
 	$(QEMU) -d unimp
 
 # Use the same ABI and runtime as normal programs, including ELF relocations.
-$(TEST_BUILD_DIR)/%.o: test-kit/%.c
+# Assign the rule explicitly: Make 3.81 otherwise chooses the kernel pattern.
+$(TEST_OBJS): $(TEST_BUILD_DIR)/%.o: test-kit/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(PROG_CFLAGS) -c $< -o $@
 
