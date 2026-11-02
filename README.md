@@ -230,12 +230,15 @@ branch protection rule that requires the `clang-format` status check.
 ## IMG1 kernel validation
 
 `kernel/loader.c` implements the header and directory checks from assignment
-section 6.1. Call `img1_validate(IMG1, IMG1_MAX_SIZE)` for the fixed FLASH image,
-or pass a buffer and its readable byte count. It returns 1 for a valid image
+section 6.1. `img1_validate` is a static helper private to `kernel/loader.c`,
+not a public API. Future loader code in that file can call
+`img1_validate(IMG1, IMG1_MAX_SIZE)` for the fixed FLASH image, or pass a buffer
+and its readable byte count. It returns 1 for a valid image
 and 0 for an invalid image, without writing to the buffer, copying the image,
 allocating memory, or printing diagnostics. The future system-call and shell
 handlers must translate this result into the assignment's `ls` and `run`
-errors. These handlers are not integrated by this parser change.
+errors. These handlers are not integrated by this parser change. The helper
+is marked `unused` until integration to avoid an unused-function warning.
 
 The validator checks the readable header first, then the declared image size
 and directory bounds, and only then reads directory entries. File ranges use

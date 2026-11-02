@@ -1,4 +1,5 @@
 #include "kernel/loader.h"
+#include <stddef.h>
 
 #define IMG1_HEADER_SIZE 20U
 #define IMG1_ENTRY_SIZE 24U
@@ -47,7 +48,14 @@ static unsigned int same_name( const uint8_t *a, const uint8_t *b )
   return 0;
 }
 
-unsigned int img1_validate( const void *image, size_t available_size )
+/* Return 1 only if the entire IMG1 header and directory obey section 6.1.
+ * image must point to available_size readable bytes, or be NULL. For FLASH,
+ * call img1_validate(IMG1, IMG1_MAX_SIZE). No bytes are copied or changed.
+ * Program contents are deliberately not validated here: a valid image may
+ * contain a bad ELF. No diagnostics are printed; callers select the required
+ * ls/run error. The buffer may be unaligned. */
+/* Unused until loader integration; keep this helper private to this file. */
+static unsigned int __attribute__( ( unused ) ) img1_validate( const void *image, size_t available_size )
 {
   if ( image == NULL || available_size < IMG1_HEADER_SIZE )
     return 0;
