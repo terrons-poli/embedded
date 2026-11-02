@@ -253,22 +253,16 @@ example, a directory at byte 24 with one 24-byte entry may point to a 41-byte
 file at byte 48. Program contents are checked separately during loading; a
 valid IMG1 directory does not imply that its files are valid ELF programs.
 
-Run the parser regression tests alone or together with the host-tool tests:
+Run the host-tool tests and build checks:
 
 ```sh
-python3 -m unittest discover -s tools -p test_loader.py -v
 python3 -m unittest discover -s tools -v
 make all image
 make test-list
 make format-check
 ```
 
-The parser tests require a native C17 compiler, selected with `HOST_CC` if it is
-not named `cc`. They compile the real kernel parser into a temporary shared
-library and call it on valid and malformed byte buffers, including unaligned
-buffers. Tests cover every PR #42 finding, boundary sizes, wrapping offsets,
-truncated buffers, and permitted layouts. CI's Ubuntu runner supplies the native
-compiler. These tests verify parsing on the host; they do not test ARM execution
-or shell behavior. The published 14-test big QEMU suite still requires the
-unfinished shell, program loader, system-call and MPU integration described in
+The host-tool tests check image packing, not kernel parsing or shell behavior.
+The published 14-test big QEMU suite still requires the unfinished shell,
+program loader, system-call and MPU integration described in
 [test-kit/README.md](test-kit/README.md).
