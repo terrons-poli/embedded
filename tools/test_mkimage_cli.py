@@ -61,7 +61,7 @@ class ImageCommandTests(unittest.TestCase):
                 result = run_mkimage("image", output, f"prog={self.program}")
 
                 self.assertEqual(result.returncode, 2)
-                self.assertIn("program size must be between 52 B", result.stderr)
+                self.assertIn("must contain at least 52 bytes", result.stderr)
                 self.assertFalse(output.exists())
 
     def test_requires_at_least_one_program(self):
