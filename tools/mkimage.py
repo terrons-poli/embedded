@@ -5,6 +5,8 @@ from pathlib import Path
 
 IMG1_HEADER_SIZE = 20
 IMG1_DIRECTORY_SIZE = 24
+IMG1_MIN_PROGRAM_SIZE = 40
+ELF32_HEADER_SIZE = 52
 VERSION = 1
 
 
@@ -29,9 +31,11 @@ def _check_duplicate_name(name: str, names: set[str]) -> None:
         raise ValueError(f"duplicate IMG1 name: {name!r}")
 
 
-def _check_program_size(name: str, content: bytes) -> None:
-    if len(content) < 40:
-        raise ValueError(f"program {name!r} must contain at least 40 bytes")
+def _check_program_size(
+    name: str, content: bytes, minimum_size: int = ELF32_HEADER_SIZE
+) -> None:
+    if len(content) < minimum_size:
+        raise ValueError(f"program {name!r} must contain at least {minimum_size} bytes")
 
 
 def _check_image_size(image_size: int) -> None:
@@ -39,12 +43,10 @@ def _check_image_size(image_size: int) -> None:
         raise ValueError("IMG1 image exceeds 2 MiB")
 
 
-def validate_inputs(programs_tuples: list[tuple[str, bytes]]):
-    """Validate IMG1 names, program sizes and the total size with alignment.
-
-    File contents are opaque here; ELF validation belongs to the caller.
-    Invalid IMG1 metadata or sizes raise ValueError.
-    """
+def _validate_inputs(
+    programs_tuples: list[tuple[str, bytes]], minimum_program_size: int
+):
+    """Share IMG1 checks while allowing ELF inputs to require a larger header."""
     _check_program_count(len(programs_tuples))
 
     names = set()
@@ -53,15 +55,24 @@ def validate_inputs(programs_tuples: list[tuple[str, bytes]]):
         _check_program_name(name)
         _check_duplicate_name(name, names)
         names.add(name)
-        _check_program_size(name, content)
+        _check_program_size(name, content, minimum_program_size)
         # Each program starts on a four-byte boundary, as in the packer.
         image_size += (-image_size) % 4 + len(content)
         _check_image_size(image_size)
 
 
+def validate_inputs(programs_tuples: list[tuple[str, bytes]]):
+    """Validate CLI inputs, requiring room for a complete ELF32 header.
+
+    This checks length, not ELF contents. Invalid inputs raise ValueError.
+    """
+    _validate_inputs(programs_tuples, ELF32_HEADER_SIZE)
+
+
 def pack_into_img(programs_tuples: list[tuple[str, bytes]]) -> bytes:
     """Validate inputs and pack files in input order using the IMG1 format."""
-    validate_inputs(programs_tuples)
+    # IMG1 permits opaque 40-byte payloads, independently of ELF requirements.
+    _validate_inputs(programs_tuples, IMG1_MIN_PROGRAM_SIZE)
 
     # Header
     img = bytearray()
