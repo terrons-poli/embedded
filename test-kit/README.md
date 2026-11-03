@@ -11,10 +11,9 @@ which Git ignores. The runner locates its suites and expected transcripts
 relative to `run_tests.py`, so it also works from other directories when you
 supply the correct kernel and image paths.
 
-The current project base has no program build rules, image packer, shell or
-loader yet. Listing the suites works now; running them requires those project
-components, ARM bare-metal GCC and `qemu-system-arm`. Listing tests does not
-validate the kernel. The repository's `make test` target is still unavailable.
+Run `make test` to build the kernel, all nine big-suite programs and the image
+with malformed fixtures, then run the big suite. This requires ARM bare-metal
+GCC and `qemu-system-arm`. Listing tests does not validate the kernel.
 
 ## Pull-request checks
 
@@ -23,41 +22,27 @@ and four additional ELF/W^X tests. The small-suite files remain in the published
 kit for reference.
 
 The `Professor tests` workflow runs on pushes, pull requests and manual starts.
-It runs `make test-list` to validate the big-suite manifest and all 14 expected
-transcripts, then compiles the kernel with ARM bare-metal GCC. This catches
-broken test-data paths and kernel build errors now. It does not check runtime
-correctness yet. The workflow summary says when runtime tests are disabled,
-and the `Big suite in QEMU` job is skipped.
+Its three jobs run independently:
 
-The runtime job uses an explicit switch rather than guessing readiness from
-the presence of source files. A file can exist while its implementation is
-still incomplete. To activate runtime tests:
+- `Host tool unit tests` checks IMG1 validation and packing.
+- `Kernel build and big-suite configuration` runs `make test-list` to validate
+  the manifest and all 14 expected transcripts, then compiles the kernel.
+- `Big suite in QEMU` installs GCC and QEMU and calls `make test` in a fresh
+  checkout. No repository variable is needed to enable it.
 
-1. Implement the program build, image packer, shell and loader.
-2. Replace the `make test` placeholder with a reproducible build of the kernel,
-   all nine big-suite test programs, and `build/test-kit/big/fs.img`. Use the
-   big fixture generator below to include the deliberately malformed inputs.
-   Finish the target with
-   `python3 test-kit/run_tests.py --suite big --kernel build/scratch-os.axf --image build/test-kit/big/fs.img`.
-   Let a build error or nonzero runner exit fail the target.
-3. Verify `make clean && make test` succeeds locally, then set the GitHub
-   Actions repository variable `PROFESSOR_TESTS_ENABLED` to `true` under
-   Settings > Secrets and variables > Actions > Variables. The workflow uses
-   GitHub's [configuration variables](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#vars-context)
-   to control the runtime job.
+The runtime job runs even while the implementation is incomplete. Build errors
+and failing tests fail the job. For example, a UART mismatch makes the runner
+return 1. A successful kernel build alone does not mean the runtime tests passed.
 
-The workflow installs GCC and QEMU for the runtime job and calls `make test`
-in a fresh checkout. For example, a UART mismatch will make the runner return
-1, which fails that job. Enabling the switch before implementing `make test`
-also fails the job; it never treats missing prerequisites as a passing test.
-Once runtime tests are enabled, require `Big suite in QEMU` in your branch
-rules to prevent merging a failing suite. Until then, the kernel build and
-configuration check can be required separately.
+Run `make clean && make test` locally to reproduce the runtime check. The target
+builds the test ELFs under `build/test-kit/small/programs/` and
+`build/test-kit/big/programs/`, then generates `build/test-kit/big/fs.img`.
+To prevent merging a failing suite, require `Big suite in QEMU` in branch rules.
 
-Both jobs use a read-only GitHub token and the same pinned checkout action as
+All jobs use a read-only GitHub token and the same pinned checkout action as
 the formatting workflow. Pinning fixes the action to a reviewed version;
 read-only access is enough because these checks do not publish changes. Each
-job has a ten-minute limit so a stuck build or emulator cannot run indefinitely.
+build or runtime job has a ten-minute limit; host tests have a five-minute limit.
 
 ## Contents
 

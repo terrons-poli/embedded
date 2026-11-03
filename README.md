@@ -71,9 +71,9 @@ toolchain and QEMU's ARM system emulator.
 - The professor's [published test kit](test-kit/README.md) is available in
   `test-kit/`. This project uses the big suite, including all 14 tests.
   `make test-list` validates its configuration without running QEMU.
-  `make test` still exits with status 2 because the program/image builds and
-  shell/loader integration are not implemented. Do not treat listing the tests
-  as a passing result for the kernel.
+  `make test` builds the kernel, test programs and fixture image, then runs all
+  14 tests in QEMU. Build errors and failing tests fail the command. Listing
+  the tests alone does not validate the kernel.
 - `make clean` removes the generated `build/` directory, including the kernel,
   map, and image. A later `make run` therefore creates the placeholder image
   again unless you have already generated a real image.
@@ -146,12 +146,12 @@ python3 -m unittest discover -s tools -v
 For example, the tests check that a 41-byte file is followed by three zero
 padding bytes before the next file, while its directory size stays 41.
 
-The `Professor tests` workflow validates the big-suite configuration and builds
-the kernel on every push and pull request. Its QEMU job is prepared but disabled
-until the program/image build and runtime implementation are ready. The
-[test-kit README](test-kit/README.md#pull-request-checks) explains the missing
-work and how to enable all 14 runtime tests. A successful kernel build alone
-does not mean the professor's tests passed.
+The `Professor tests` workflow runs host-tool tests, validates the big-suite
+configuration, builds the kernel and runs all 14 runtime tests in QEMU on every
+push and pull request. The QEMU job runs even while the implementation is
+incomplete and reports failures. No repository variable is needed to enable it.
+See the [test-kit README](test-kit/README.md#pull-request-checks) for details.
+A successful kernel build alone does not mean the professor's tests passed.
 
 ## Code formatting
 
