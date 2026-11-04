@@ -12,5 +12,11 @@
     "@slidev/theme-default": "latest",
     "@slidev/theme-seriph": "latest",
     "vue": "^3.5.33"
+  },
+  "devDependencies": {
+    "playwright-chromium": "^1.64.1"
+  },
+  "allowScripts": {
+    "playwright-chromium": true
   }
 }
