@@ -1,6 +1,6 @@
 #include "parser.h"
 #include "string.h"
-#include "printf.h"
+#include "lib/printf.h"
 
 void execute_command(const char* cmd){
 
@@ -11,6 +11,7 @@ void execute_command(const char* cmd){
         printf("run <name> - run a program\n");
     }
 
+    /* TODO: implement strcmp */
     else if(strcmp(cmd, "ls") == 0){
 
         //TODO (Issue #35)
@@ -27,6 +28,6 @@ void execute_command(const char* cmd){
         }
     }
     else{
-        printd("error: unknown command\n");
+        printf("error: unknown command\n");
     }
 }
