@@ -20,4 +20,5 @@ struct img1_directory_entry {
   uint32_t size;
 };
 
+int load_program(const uint8_t *name);
 #endif // LOADER_H

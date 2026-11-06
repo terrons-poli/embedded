@@ -1,5 +1,6 @@
 #include "kernel/loader.h"
 #include <stddef.h>
+#include "kernel/task.h"
 
 #define IMG1_HEADER_SIZE 20U
 #define IMG1_ENTRY_SIZE 24U
@@ -101,4 +102,33 @@ static unsigned int __attribute__( ( unused ) ) img1_validate( const void *image
     }
   }
   return 1;
+}
+
+static int find_free_memory_slot(){
+	for(uint32_t i=0; i < PROGRAM_SLOT_COUNT; i++){
+		if(task_program_slot_free(i))
+			return i;
+	}
+	return -1;
+}
+
+
+static unsigned int search_elf_by_name( const uint8_t *name ){
+	/*TODO: function that returns a *char array (name list of programs) useful also for svc 12 */	
+}
+
+int load_program( const uint8_t *name ){
+
+	if(!validate_program_name(name))
+		return -1;
+	
+	/*TODO: Create a function to search ELF file. */
+
+	const int free_slot = find_free_memory_slot();
+
+	if(free_slot < 0)
+		return -3;
+
+	/*TODO: Copy data from FLASH to RAM in the slot saved in free_slot*/
+
 }
