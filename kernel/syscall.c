@@ -19,7 +19,7 @@
  * delay_until and exit. They do not switch here. They only change the
  * task's state and make PendSV pending (task_request_switch()). PendSV
  * has a lower priority than SVCall (0xE0 against 0x80), so it waits:
- * it runs right after this exception ends, and switches then. That is
+* it runs right after this exception ends, and switches then. That is
  * why exit can now be an ordinary entry of the table: by the time the
  * task would resume after its `svc`, PendSV has already switched away,
  * and a FINISHED task is never chosen again.
@@ -32,6 +32,7 @@
 #include "drivers/systick.h"
 #include "kernel/task.h"
 #include "kernel/trace.h"
+#include "kernel/loader.h"
 
 /* Every service has the same shape: up to three arguments (the
  * caller's r0, r1, r2) and one result (which becomes the caller's r0).
@@ -187,6 +188,16 @@ static uint32_t sys_trace_dump_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   return 0;
 }
 
+static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 ){
+	
+	(void) a1; /*not used*/
+	(void) a2;
+
+	const char *name = (const char *) a0;
+	return load_program(name);
+}
+
+
 /* Wait bookkeeping is supplied even though the untouched base has no loader.
  * Student loader code supplies SYS_PROGRAM_RUN and creates program tasks. */
 static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
@@ -213,6 +224,7 @@ static const syscall_fn table[] = {
   [SYS_DELAY_UNTIL] = sys_delay_until_impl,
   [SYS_TRACE_DUMP] = sys_trace_dump_impl,
   [SYS_TICK_COUNT] = sys_tick_count_impl,
+	[SYS_PROGRAM_RUN] = sys_program_run_impl, /* svc 13 table entry*/
   [SYS_PROGRAM_WAIT] = sys_program_wait_impl,
 };
 
