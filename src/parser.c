@@ -1,32 +1,85 @@
 #include "parser.h"
-#include "string.h"
 #include "lib/printf.h"
+#include "lib/syscalls.h"
+
+/* 
+ * Bare-metal implementation of standard strcmp.
+ * Compares two null-terminated strings character by character.
+ * Returns 0 if they are exactly identical, or the ASCII difference otherwise.
+ */
+static int my_strcmp(const char *s1, const char *s2) {
+
+    while (*s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+    }
+    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+}
+
+/* 
+ * Bare-metal implementation of standard strncmp.
+ * Compares up to 'n' characters of two strings.
+ * Returns 0 if the first 'n' characters match, or the ASCII difference otherwise.
+ */
+static int my_strncmp(const char *s1, const char *s2, unsigned int n) {
+    while (n > 0 && *s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
+        n--;
+    }
+    if (n == 0) {
+        return 0;
+    }
+    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+}
 
 void execute_command(const char* cmd){
 
-    // Command 'help'
-    if(strcmp(cmd, "help") == 0){
+    /* Command 'help': Show available commands */
+    if(my_strcmp(cmd, "help") == 0){
         printf("help - show commands\n");
         printf("ls - list programs\n");
         printf("run <name> - run a program\n");
     }
 
-    /* TODO: implement strcmp */
-    else if(strcmp(cmd, "ls") == 0){
+    /* Command 'ls': List all available programs */
+    else if(my_strcmp(cmd, "ls") == 0){
+        /* Get the total number of executable images from the kernel (SVC 11) */
+        int count = sys_image_count();
+        
+        /* Local buffer to safely hold the program name copied by the kernel */
+        char name_buffer[32];
 
-        //TODO (Issue #35)
+        for (int i=0; i < count; i++){
+            /* Ask the kernel (SVC 12) to copy the name of the program at index 'i' 
+            into our buffer. We pass the buffer size to prevent memory overflows. */
+            int result = sys_image_name(i,name_buffer, sizeof(name_buffer));
 
-    }else if(strncmp(cmd, "run" , 4) == 0){
-        // the 4th element in cmd is the name of the 
+            if(result == 0){
+                printf("%s,\n", name_buffer);
+            }
+        }
+
+    }
+    /* Command 'run <name>': Execute a specific program */
+    /* Check for "run " (4 characters including the space) */
+    else if(my_strncmp(cmd, "run " , 4) == 0){
+        
+        /* The program name starts immediately after "run " (index 4) */
         const char *program_name = cmd + 4;
 
         //An empty line, run alone prints the error
         if(program_name[0] == '\0') {
             printf("error: unknown command\n");
         } else {
-            //TODO (Issue #35)
+            /* TODO (Issue #35): 
+               - Call sys_program_run(program_name) to start the task
+               - Handle potential errors (e.g. if the task ID is < 0)
+               - Call sys_program_wait(task_id) to block the shell until completion
+            */
         }
     }
+    /* Unknown or malformed command */
     else{
         printf("error: unknown command\n");
     }
