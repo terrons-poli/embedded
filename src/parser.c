@@ -53,8 +53,8 @@ void execute_command( const char *cmd )
     /* Get the total number of executable images from the kernel (SVC 11) */
     int count = sys_image_count();
 
-    /* Local buffer to safely hold the program name copied by the kernel */
-    char name_buffer[32];
+    /* SVC 12 permits at most 16 bytes: 15 name characters and the final NUL. */
+    char name_buffer[16];
 
     if ( count < 0 )
     {
