@@ -2,6 +2,7 @@
 #include "kernel/task.h"
 #include "lib/printf.h"
 #include "lib/syscalls.h"
+#include "parser.h"
 
 extern uint32_t _shell_part_start[], _shell_stack_top[]; /* shell_stack */
 extern uint32_t _shell_data_start[], _shell_data_end[], _shell_data_load[]; /* shell_data */
@@ -53,6 +54,12 @@ void shell_main()
                     i++;
                 }
             }
+        }
+
+        /* If the user typed something (i > 0), pass the buffer to the parser. */
+        if(i > 0)
+        {
+            execute_command(buffer);
         }
     }
 }
