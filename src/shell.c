@@ -17,40 +17,57 @@ void shell_main()
 
         printf( "scratch> " );
 
-        // Ciclo interno: polling per costruire la stringa carattere per carattere
-        while ( 1 )
+        /* Inner loop: polling to build the input string character by character */
+        while(1)
         {
-            /** 
-             * la sys_read è una system call non bloccante: interroghiamo il kernel per sapere se 
-             * l'hardware della UART ha ricevuto qualcosa
-            */
+            /* 
+             * sys_read is a non-blocking system call: we ask the kernel 
+             * if the UART hardware has received any characters.
+             */
             int c = sys_read();
             
-            /* se non viene premuto nessun tasto il buffer del kernel è vuoto */
+            /* If no key is pressed, the kernel buffer is empty (returns -1) */
             if ( c == -1 )
             {
-                /* per non sprecare cicli di clock, grazie a task_yield cediamo la CPU agli altri task */
+                /* 
+                 * To avoid wasting CPU cycles in a busy-wait loop, we use 
+                 * task_yield() to willingly give the CPU to other tasks.
+                 */
                 task_yield();
                 continue;
             }
             
+            /* Check if the user pressed the Enter key (Carriage Return or Line Feed) */
             if ( c == '\r' || c == '\n' )
             {
                 printf( "\n" );
-                buffer[ i ] = '\0';/* chiudiamo la stringa affinché C possa leggerla */
+
+                /* Null-terminate the string so standard C functions can safely read it */
+                buffer[ i ] = '\0';
                 break;
+            }
+            
+            /* Handle Backspace (ASCII 8 '\b' or ASCII 127 DEL) */
+            else if ( c == '\b' || c == 127 )
+            {
+                if ( i > 0 )
+                {
+                    i--; /* Move back in the buffer */
+                    /* Erase character from terminal: backspace, overwrite with space, backspace */
+                    printf( "\b \b" );
+                }
             }
             else
             {
-                /**
-                 *  implementiamo il silent drop: 
-                 * accettiamo il carattere solo se abbiamo ancora spazio,
-                 * altrimenti ignoriamo completamente l'input
+                /*
+                 * Implement "silent drop" security feature: 
+                 * we accept the character only if we still have space in the buffer.
+                 * Otherwise, we completely ignore the input to prevent buffer overflows.
                  */
                 if ( i < 31 )
                 {
-                    printf( "%c", (char)c ); /* echo a schermo per l'utente */
-                    buffer[ i ] = (char)c; /* salviamo nel nostro buffer */
+                    printf( "%c", (char)c ); /* Echo the character to the screen */
+                    buffer[ i ] = (char)c; /* Store the character in our buffer */
                     i++;
                 }
             }
@@ -66,6 +83,9 @@ void shell_main()
 
 void task_project_configure( void )
 {
+    /* 
+     * Configure the shell task memory protection boundaries 
+     * using the physical addresses provided by the linker script.     */
     task_configure_shell( "shell", shell_main,
         _shell_stack_top, (uint32_t)_shell_part_start,
         (uint32_t)_shell_part_end, _shell_data_start,
