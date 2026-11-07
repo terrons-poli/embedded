@@ -5,6 +5,7 @@
 
 #define IMG1_MAX_SIZE ( 1UL << 21 )
 #define IMG1 ( (const struct img1_header *) 0x00200000 )
+#define IMG1_NAME_SIZE 16U
 
 struct img1_header {
   char magic[4];
