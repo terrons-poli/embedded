@@ -33,6 +33,7 @@
 #include "kernel/task.h"
 #include "kernel/trace.h"
 
+#include "kernel/loader.h"
 /* Every service has the same shape: up to three arguments (the
  * caller's r0, r1, r2) and one result (which becomes the caller's r0).
  * A service that needs fewer arguments simply ignores the others.
@@ -198,6 +199,33 @@ static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   return (uint32_t) task_wait_program( a0, &frame[0] );
 }
 
+
+static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+  (void) a0;
+  (void) a1;
+  (void) a2;
+  return (uint32_t) image_count();
+}
+
+
+/* SYS_IMAGE_NAME: a0 = index, a1 = destination, a2 = capacity.
+ * Copy one directory name into the caller's own RAM. FLASH is a legal
+ * source for SYS_WRITE, but it is not a legal destination here: the whole
+ * buffer must sit in the caller's partition. Capacity is checked first,
+ * because a length of 0 would otherwise look in-range. A name that does
+ * not fit is still stored as a shorter NUL-terminated prefix. */
+static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+  if ( a2 < 1 || a2 > IMG1_NAME_SIZE )
+    return (uint32_t) -1;
+  const struct tcb *t = tcb_current;
+  if ( t == 0 || !in_range( a1, a2, t->part_start, t->part_end ) )
+    return (uint32_t) -1;
+  return (uint32_t) img1_name( a0, (char *) a1, a2 );
+}
+
+
 /* The dispatch table: table[n] is the function for service n.
  * The [SYS_WRITE] = ... form puts each entry at its number, whatever
  * the order of the lines. Entry 0 is left empty (0): it is not a
@@ -213,6 +241,8 @@ static const syscall_fn table[] = {
   [SYS_DELAY_UNTIL] = sys_delay_until_impl,
   [SYS_TRACE_DUMP] = sys_trace_dump_impl,
   [SYS_TICK_COUNT] = sys_tick_count_impl,
+  [SYS_IMAGE_COUNT] = sys_image_count_impl,
+  [SYS_IMAGE_NAME] = sys_image_name_impl,
   [SYS_PROGRAM_WAIT] = sys_program_wait_impl,
 };
 
