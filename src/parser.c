@@ -56,7 +56,7 @@ void execute_command(const char* cmd){
             int result = sys_image_name(i,name_buffer, sizeof(name_buffer));
 
             if(result == 0){
-                printf("%s,\n", name_buffer);
+                printf("%s\n", name_buffer);
             }
         }
 
@@ -72,11 +72,23 @@ void execute_command(const char* cmd){
         if(program_name[0] == '\0') {
             printf("error: unknown command\n");
         } else {
-            /* TODO (Issue #35): 
-               - Call sys_program_run(program_name) to start the task
-               - Handle potential errors (e.g. if the task ID is < 0)
-               - Call sys_program_wait(task_id) to block the shell until completion
-            */
+            /* Ask the kernel (SVC 13) to load and start the requested program */
+            int task_id = sys_program_run(program_name);
+
+            /* Handle specific kernel error codes */
+            if (task_id == -2) {
+                printf("error: program not found\n");
+            } 
+            else if (task_id == -3) {
+                printf("error: no free slot\n");
+            } 
+            else if (task_id < 0) {
+                /* Catch-all for any other negative value */
+                printf("error: program cannot be loaded\n");
+            }else {
+                /* Ask the kernel (SVC 14) to block the shell until the task ends */
+                sys_program_wait(task_id);
+            }
         }
     }
     /* Unknown or malformed command */
