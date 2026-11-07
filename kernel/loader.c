@@ -112,9 +112,17 @@ static int find_free_memory_slot(){
 	return -1;
 }
 
+/*To find the entry by program's name*/
+static const struct img1_directory_entry *find_entry_by_name( const uint8_t *name ){
 
-static unsigned int search_elf_by_name( const uint8_t *name ){
-	/*TODO: function that returns a *char array (name list of programs) useful also for svc 12 */	
+	const struct img1_directory_entry *entries = (const struct img1_directory_entry *)(IMG1 + IMG1->directory_offset);
+
+	for(uint32_t i=0; i<IMG1->count; i++){
+		if(same_name(name,(const uint8_t *)entries[i].name))
+			return &entries[i];
+	}
+
+	return NULL;
 }
 
 int load_program( const uint8_t *name ){
@@ -122,7 +130,11 @@ int load_program( const uint8_t *name ){
 	if(!validate_program_name(name))
 		return -1;
 	
-	/*TODO: Create a function to search ELF file. */
+
+	const struct img1_directory_entry *entry = find_entry_by_name(name);
+
+	if(!entry)
+		return -2;
 
 	const int free_slot = find_free_memory_slot();
 
@@ -130,5 +142,5 @@ int load_program( const uint8_t *name ){
 		return -3;
 
 	/*TODO: Copy data from FLASH to RAM in the slot saved in free_slot*/
-
+	
 }
