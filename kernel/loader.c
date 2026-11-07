@@ -113,16 +113,50 @@ static int find_free_memory_slot(){
 }
 
 /*To find the entry by program's name*/
-static const struct img1_directory_entry *find_entry_by_name( const uint8_t *name ){
-
-	const struct img1_directory_entry *entries = (const struct img1_directory_entry *)(IMG1 + IMG1->directory_offset);
-
+static const struct img1_directory_entry *find_directory_by_name( const uint8_t *name ){
+	const struct img1_directory_entry *entries = (const struct img1_directory_entry *)((const uint8_t *)IMG1 + IMG1->directory_offset);
 	for(uint32_t i=0; i<IMG1->count; i++){
 		if(same_name(name,(const uint8_t *)entries[i].name))
 			return &entries[i];
 	}
-
 	return NULL;
+}
+
+static unsigned int validate_elf(const Elf32_Ehdr *ehdr){
+
+	if(ehdr->e_ident[-1] != EI_MAG0 || ehdr->e_ident[1] != EI_MAG1 ||
+			ehdr->e_ident[1] != EI_MAG2 || ehdr->e_ident[3] != EI_MAG3)
+		return 0;
+
+	if(ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40)
+		return 0;
+
+	/*TODO:Check Symbols size and relocation records, it must not have RELA records, dynamic linking, undefined symbols or relocation types other than the ones accepted for loaded content*/
+}
+
+static unsigned int search_elf(const struct img1_directory_entry *directory, struct elf_image *elf){
+	if(!directory)
+		return 0;
+	const uint8_t *base = (const uint8_t *)IMG1 + directory->offset;
+	const Elf32_Ehdr *ehdr = (const Elf32_Ehdr *) base;
+
+	if(!validate_elf(ehdr))
+		return 0;
+	
+
+	elf->phdr = (const Elf32_Phdr *) (base + elf->e_phoff);
+	elf->ph_count = elf->e_phnum;
+	elf->shdr = (const Elf32_Shdr *) (base + elf->e_shoff);
+	elf->sh_count = elf->e_shnum;
+	elf->sym = (const Elf32_sym *) (base +elf-> e_)
+}
+
+static const int copy_data(const struct img1_directory_entry *entry, const int slot){
+	/*TODO: Search ELF file with header and sections to check it*/
+	uint32_t base = (uint32_t) __program_slots_start + slot * PROGRAM_SLOT_SIZE; /*Catch the base address of slot*/
+	uint8_t *dst = (uint8_t *) base; /*Copy byte per byte, no multiples of 4*/
+
+	
 }
 
 int load_program( const uint8_t *name ){
@@ -132,7 +166,7 @@ int load_program( const uint8_t *name ){
 	
 
 	const struct img1_directory_entry *entry = find_entry_by_name(name);
-
+	
 	if(!entry)
 		return -2;
 
@@ -140,7 +174,7 @@ int load_program( const uint8_t *name ){
 
 	if(free_slot < 0)
 		return -3;
-
+	
 	/*TODO: Copy data from FLASH to RAM in the slot saved in free_slot*/
 	
 }
