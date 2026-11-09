@@ -122,16 +122,101 @@ static const struct img1_directory_entry *find_directory_by_name( const uint8_t 
 	return NULL;
 }
 
-static unsigned int validate_elf(const Elf32_Ehdr *ehdr){
+static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
+	
+	const uint8_t *elf_raw = (const uint8_t *) ehdr;
 
-	if(ehdr->e_ident[-1] != EI_MAG0 || ehdr->e_ident[1] != EI_MAG1 ||
-			ehdr->e_ident[1] != EI_MAG2 || ehdr->e_ident[3] != EI_MAG3)
+	if(file_size < sizeof(Elf32_Ehdr))
 		return 0;
 
-	if(ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40)
+	/*Header validation*/
+	if(	ehdr->e_ident[EI_MAG0] != ELFMAG0 || 
+			ehdr->e_ident[EI_MAG1] != ELFMAG1 ||		/*Magic bytes*/
+			ehdr->e_ident[EI_MAG2] != ELFMAG2 || 
+			ehdr->e_ident[EI_MAG3] != ELFMAG3 ||
+			ehdr->e_ident[EI_CLASS] != ELFCLASS32	||												/*Elf 32 bit*/
+			ehdr->e_ident[EI_DATA] != ELFDATA2LSB ||												/*Little-endian*/
+			ehdr->e_ident[EI_VERSION] != EV_CURRENT	||											/*Version 1*/
+			ehdr->e_type != ET_EXEC || ehdr->e_machine != EM_ARM )					/*Executable ARM elf*/
 		return 0;
+	
+	/*Size validation*/
+	if(ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40 || ehdr->e_shnum == 0 || ehdr->e_phnum == 0)
+		return 0;
+	
+	
+	uint32_t ph_table_end = ehdr->e_phoff + ((uint32_t)ehdr->e_phnum * 32u);
+	uint32_t sh_table_end = ehdr->e_shoff + ((uint32_t)ehdr->e_shnum * 40u);
 
-	/*TODO:Check Symbols size and relocation records, it must not have RELA records, dynamic linking, undefined symbols or relocation types other than the ones accepted for loaded content*/
+	if(ph_table_end > file_size || sh_table_end > file_size)
+		return 0;
+	
+	const Elf32_Shdr *shdrs = (const Elf32_Shdr *) (elf_raw + ehdr->e_shoff);
+	const uint16_t shdrcount = ehdr->e_shnum;
+	const Elf32_sym *symtable = 0;
+	/*Check Symbols size and relocation records, it must not have RELA records, dynamic linking, undefined symbols or relocation types other than the ones accepted for loaded content*/
+
+	for(uint16_t i=0; i<shdrcount; i++){
+		if(	shdrs[i].sh_type == SHT_RELA ||	/*RELA section*/
+				shdrs[i].sh_type == SHT_DYNAMIC) /*Dynamic linking section*/
+			return 0;
+
+		if( shdrs[i].sh_type == SHT_SYMTAB ){ /* Check symbol entries size*/
+			if( shdrs[i].sh_entsize != 16 )
+				return 0;
+			symtable = &shdrs[i];
+			
+		}
+		if( shdrs[i].type != SHT_NOBITS ){
+			if(shdrs[i].sh_offset + shdrs[i].sh_size > file_size)
+				return 0;
+		}
+	}
+	
+	/*Check relocation sections*/
+
+	for(uint16_t i = 0; i < shdrcount; i++){
+		if(shdrs[i].sh_type != SHT_REL)
+			continue
+		
+		if(shdrs[i].sh_entsize != 8)
+			return 0;
+
+		if(shdrs[i].sh_info >= shdrcount)
+			return 0;
+		
+		/*Check relocation target*/
+		const Elf32_Shdr *target = &shdrs[shdrs[i].sh_info];
+
+		if(!(target->sh_flags & SHF_ALLOC))
+			continue;
+
+		
+
+
+	}
+		
+			
+	/*Program headers validation*/
+	const Elf32_Phdr *phdrs = (const Elf32_Phdr *)(elf_raw + ehdr->e_phoff);
+	const uint16_t phdrcount = ehdr->e_phnum;
+	int loadcount = 0;
+	for(uint16_t i = 0; i < phdrcount; i++){
+		if(phdrs[i].p_type == PT_LOAD){
+			loadcount++;
+			/*The segment must be smaller than file_size*/
+			if(phdrs[i].p_offset + phdrs[i].p_filesz > file_size || phdrs[i].p_memsz < phdrs[i].p_filesz)
+				return 0;
+		}
+		/*No dynamic links*/
+		if(phdrs[i].p_type == PT_DYNAMIC || phdrs[i].p_type == PT_INTERP)
+			return 0;
+	}
+
+	if(loadcount == 0){
+		return 0;
+	}
+
 }
 
 static unsigned int search_elf(const struct img1_directory_entry *directory, struct elf_image *elf){
@@ -153,8 +238,8 @@ static unsigned int search_elf(const struct img1_directory_entry *directory, str
 
 static const int copy_data(const struct img1_directory_entry *entry, const int slot){
 	/*TODO: Search ELF file with header and sections to check it*/
-	uint32_t base = (uint32_t) __program_slots_start + slot * PROGRAM_SLOT_SIZE; /*Catch the base address of slot*/
-	uint8_t *dst = (uint8_t *) base; /*Copy byte per byte, no multiples of 4*/
+	
+	
 
 	
 }
