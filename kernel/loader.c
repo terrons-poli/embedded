@@ -122,7 +122,7 @@ static const struct img1_directory_entry *find_directory_by_name( const uint8_t 
 	return NULL;
 }
 
-static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
+static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size, struct elf_image *elf){
 	
 	const uint8_t *elf_raw = (const uint8_t *) ehdr;
 
@@ -153,7 +153,8 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
 	
 	const Elf32_Shdr *shdrs = (const Elf32_Shdr *) (elf_raw + ehdr->e_shoff);
 	const uint16_t shdrcount = ehdr->e_shnum;
-	const Elf32_sym *symtable = 0;
+	const Elf32_Sym *symtable = NULL;
+	uint32_t symcount = 0;
 	/*Check Symbols size and relocation records, it must not have RELA records, dynamic linking, undefined symbols or relocation types other than the ones accepted for loaded content*/
 
 	for(uint16_t i=0; i<shdrcount; i++){
@@ -164,10 +165,10 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
 		if( shdrs[i].sh_type == SHT_SYMTAB ){ /* Check symbol entries size*/
 			if( shdrs[i].sh_entsize != 16 )
 				return 0;
-			symtable = &shdrs[i];
-			
+			symtable = (const Elf32_Sym *)(elf_raw + shdrs[i].sh_offset);
+			symcount = symtable->sh_size/16;
 		}
-		if( shdrs[i].type != SHT_NOBITS ){
+		if( shdrs[i].sh_type != SHT_NOBITS ){
 			if(shdrs[i].sh_offset + shdrs[i].sh_size > file_size)
 				return 0;
 		}
@@ -177,7 +178,7 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
 
 	for(uint16_t i = 0; i < shdrcount; i++){
 		if(shdrs[i].sh_type != SHT_REL)
-			continue
+			continue;
 		
 		if(shdrs[i].sh_entsize != 8)
 			return 0;
@@ -190,10 +191,32 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
 
 		if(!(target->sh_flags & SHF_ALLOC))
 			continue;
-
 		
+		if(!symtable)
+			return 0;
+		
+		/*Check relocation section*/
+		const Elf32_Rel *rels = (const Elf32_Rel *)(elf_raw + shdr[i].sh_offset);
+		uint32_t relcount = shdrs[i].sh_size / 8;
 
+		for(uint32_t r = 0; r<relcount; r++){
+			uint32_t r_type = ELF32_R_TYPE(rels[r].r_info);
+			uint32_t r_sym = ELF32_R_SYM(rels[r].r_info);
 
+			if(r_type != R_ARM_ABS32 &&
+					r_type != R_ARM_THM_CALL &&
+					r_type != R_ARM_THM_JUMP24)
+				return 0;
+			
+			if(rels[r].r_offset + 4 > target->sh_size) /* The patched target field is 4 bytes wide */
+				return 0;
+
+			if(r_sym >= symcount)
+				return 0;
+
+			if(symtable[r_sym].st_shndx == SHN_UNDEF) // The symbol must exist in the table
+				return 0;
+		}
 	}
 		
 			
@@ -216,7 +239,20 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size){
 	if(loadcount == 0){
 		return 0;
 	}
+	
+	if((ehdr->e_entry & 1u) == 0)	/*Thumb entry point*/
+		return 0;
 
+	/*Fill the structure*/
+	elf->ehdr = ehdr;
+	elf->entry_point = ehdr->e_entry;
+	elf->phdrs = phdrs;
+	elf->ph_count = phdrcount;
+	elf->shdrs = shdrs;
+	elf->sh_count = shdrcount;
+	elf->sym = symtable;
+	elf->sym_count = symcount;
+	return 1;
 }
 
 static unsigned int search_elf(const struct img1_directory_entry *directory, struct elf_image *elf){
@@ -224,16 +260,10 @@ static unsigned int search_elf(const struct img1_directory_entry *directory, str
 		return 0;
 	const uint8_t *base = (const uint8_t *)IMG1 + directory->offset;
 	const Elf32_Ehdr *ehdr = (const Elf32_Ehdr *) base;
-
-	if(!validate_elf(ehdr))
-		return 0;
+	
+	return validate_elf(ehdr,directory->size,elf);
 	
 
-	elf->phdr = (const Elf32_Phdr *) (base + elf->e_phoff);
-	elf->ph_count = elf->e_phnum;
-	elf->shdr = (const Elf32_Shdr *) (base + elf->e_shoff);
-	elf->sh_count = elf->e_shnum;
-	elf->sym = (const Elf32_sym *) (base +elf-> e_)
 }
 
 static const int copy_data(const struct img1_directory_entry *entry, const int slot){
