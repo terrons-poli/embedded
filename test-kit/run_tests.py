@@ -5,6 +5,7 @@ import argparse
 import difflib
 import json
 import os
+import re
 from pathlib import Path
 import select
 import subprocess
@@ -79,7 +80,37 @@ def expected_case(root, test):
         raise TestFailure(f"invalid commands in {path}")
     if not isinstance(case.get("uart"), str):
         raise TestFailure(f"invalid UART transcript in {path}")
+    ranges = case.get("address_ranges", {})
+    if not isinstance(ranges, dict):
+        raise TestFailure(f"invalid address_ranges in {path}")
     return case
+
+
+def match_with_ranges(expected, actual, ranges):
+    """Compare exactly, except placeholders that accept a range of addresses.
+
+    Each placeholder in `expected` (for example <CODE_ADDRESS>) matches any
+    0x-prefixed 8-digit hex address inside [min, max], optionally even only.
+    Returns None on success or a reason string.
+    """
+    pattern = re.escape(expected)
+    for name in ranges:
+        pattern = pattern.replace(
+            re.escape(name), f"(?P<{re.sub('[^A-Za-z0-9]', '_', name)}>0x[0-9a-f]{{8}})"
+        )
+    found = re.fullmatch(pattern, actual)
+    if not found:
+        return "UART mismatch (text outside the accepted address placeholders differs)"
+    for name, limits in ranges.items():
+        group = re.sub("[^A-Za-z0-9]", "_", name)
+        value = int(found.group(group), 16)
+        low, high = int(limits["min"], 16), int(limits["max"], 16)
+        if not low <= value <= high or (limits.get("even") and value & 1):
+            return (
+                f"address {found.group(group)} is not an accepted value "
+                f"(need {limits['min']}..{limits['max']}{', even' if limits.get('even') else ''})"
+            )
+    return None
 
 
 def remaining(deadline):
@@ -214,6 +245,25 @@ def run_test(args, root, test, global_deadline):
             f"UART output is not UTF-8/ASCII at byte {error.start}"
         ) from error
     expected = case["uart"]
+    ranges = case.get("address_ranges", {})
+    if ranges:
+        range_error = match_with_ranges(expected, actual, ranges)
+        if range_error is None:
+            return
+        shown = expected
+        for name in ranges:
+            shown = shown.replace(name, "0x????????")
+        # Show a line-level diff with the placeholder left in the expected text.
+        diff = "".join(
+            difflib.unified_diff(
+                expected.splitlines(keepends=True),
+                actual.splitlines(keepends=True),
+                fromfile="expected",
+                tofile="actual",
+                n=1,
+            )
+        ).rstrip()
+        raise TestFailure(f"{range_error}\n{diff}")
     if actual != expected:
         reason = mismatch_reason(expected, actual)
         diff = "".join(

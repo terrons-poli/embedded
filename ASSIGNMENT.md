@@ -1,5 +1,20 @@
 # Scratch-OS Project: Loading and Running Programs
 
+## Announcements
+
+Newest first. Whenever an announcement changes the test kit, download the
+updated `test-kit/` folder again.
+
+**2026-11-11 — `wx_write_code` accepts any address inside slot 0.**
+The fault address printed by this test depends on where your build places
+`main` (link order, optimisation level), so it cannot be a fixed number. The
+old expected value `0x20002280` came from the reference build only. Now the
+test accepts any even address in `0x20002000..0x20002fff`; the rest of the
+transcript must still match exactly. To update: replace
+`test-kit/run_tests.py`, `test-kit/big/expected/wx_write_code.json` and
+`test-kit/README.md` with the new versions. The assignment table in
+section 7 was updated too. Small-version teams are not affected.
+
 ## 1. What the project is about
 
 In the scratch-OS we developed in class, every task is compiled and linked together with the
@@ -733,7 +748,7 @@ files and adds four big-only tests:
 | `bad_reloc` | A relocation outside the program is refused; `help` then shows that the shell still works. |
 | `unsupported_reloc` (big only) | Type 3 prints `loader: unsupported relocation type 3`. A good program then runs in slot 0 with id 4. |
 | `truncated_elf` (big only) | A cut ELF file is refused without any fault line. A good program then runs in slot 0 with id 4. |
-| `wx_write_code` (big only) | A write into code prints `MemManage in loaded program: CFSR=0x82 address=0x20002280`. A good program then reuses slot 0 with id 8. |
+| `wx_write_code` (big only) | A write into code prints `MemManage in loaded program: CFSR=0x82 address=0x2000xxxx`. The address must be an even address inside slot 0 (`0x20002000..0x20002fff`); its exact value depends on where your build places `main`, so the test accepts any such address. A good program then reuses slot 0 with id 8. |
 | `wx_exec_data` (big only) | A jump into data prints `MemManage in loaded program: CFSR=0x1`. A good program then reuses slot 0 with id 8. |
 
 The expected transcripts also contain both boot lines, the echoed commands,
