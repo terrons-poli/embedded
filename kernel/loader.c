@@ -267,11 +267,11 @@ static unsigned int search_elf(const struct img1_directory_entry *directory, str
 }
 
 static const int copy_data(const struct img1_directory_entry *entry, const int slot){
-	/*TODO: Search ELF file with header and sections to check it*/
-	
-	
+		struct elf_image *elf = NULL;
+		if(search_elf(entry,elf))
+			return 0;
 
-	
+		/*TODO:Copy data code*/
 }
 
 int load_program( const uint8_t *name ){
@@ -280,7 +280,7 @@ int load_program( const uint8_t *name ){
 		return -1;
 	
 
-	const struct img1_directory_entry *entry = find_entry_by_name(name);
+	const struct img1_directory_entry *entry = find_directory_by_name(name);
 	
 	if(!entry)
 		return -2;
