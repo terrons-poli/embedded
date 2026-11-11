@@ -25,12 +25,12 @@ struct elf_image{
 	const Elf32_Ehdr *ehdr; /* elf header */
 	const Elf32_Phdr *phdrs; /*program headers*/
 	uint16_t ph_count;
-	const ElF32_Shdr *shdrs; /* section headers*/
+	const Elf32_Shdr *shdrs; /* section headers*/
 	uint16_t sh_count;
 	const Elf32_Sym *sym; /* string and symbol tables*/
 	uint16_t sym_count;
 	uint32_t entry_point; /*e_entry*/
-}
+};
 
 int load_program(const uint8_t *name);
 #endif // 

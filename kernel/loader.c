@@ -166,7 +166,7 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size, str
 			if( shdrs[i].sh_entsize != 16 )
 				return 0;
 			symtable = (const Elf32_Sym *)(elf_raw + shdrs[i].sh_offset);
-			symcount = symtable->sh_size/16;
+			symcount = symtable->st_size/16;
 		}
 		if( shdrs[i].sh_type != SHT_NOBITS ){
 			if(shdrs[i].sh_offset + shdrs[i].sh_size > file_size)
@@ -196,7 +196,7 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size, str
 			return 0;
 		
 		/*Check relocation section*/
-		const Elf32_Rel *rels = (const Elf32_Rel *)(elf_raw + shdr[i].sh_offset);
+		const Elf32_Rel *rels = (const Elf32_Rel *)(elf_raw + shdrs[i].sh_offset);
 		uint32_t relcount = shdrs[i].sh_size / 8;
 
 		for(uint32_t r = 0; r<relcount; r++){
@@ -204,7 +204,7 @@ static unsigned int validate_elf(const Elf32_Ehdr *ehdr, uint32_t file_size, str
 			uint32_t r_sym = ELF32_R_SYM(rels[r].r_info);
 
 			if(r_type != R_ARM_ABS32 &&
-					r_type != R_ARM_THM_CALL &&
+					r_type != R_ARM_THM_PC22 && /*Old newlib alias for R_ARM_THM_CALL*/
 					r_type != R_ARM_THM_JUMP24)
 				return 0;
 			
