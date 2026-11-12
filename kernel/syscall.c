@@ -188,15 +188,15 @@ static uint32_t sys_trace_dump_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   return 0;
 }
 
-static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 ){
-	
-	(void) a1; /*not used*/
-	(void) a2;
+static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
 
-	const char *name = (const char *) a0;
-	return load_program(name);
+  (void) a1; /*not used*/
+  (void) a2;
+
+  const char *name = (const char *) a0;
+  return load_program( name );
 }
-
 
 /* Wait bookkeeping is supplied even though the untouched base has no loader.
  * Student loader code supplies SYS_PROGRAM_RUN and creates program tasks. */
@@ -224,7 +224,7 @@ static const syscall_fn table[] = {
   [SYS_DELAY_UNTIL] = sys_delay_until_impl,
   [SYS_TRACE_DUMP] = sys_trace_dump_impl,
   [SYS_TICK_COUNT] = sys_tick_count_impl,
-	[SYS_PROGRAM_RUN] = sys_program_run_impl, /* svc 13 table entry*/
+  [SYS_PROGRAM_RUN] = sys_program_run_impl, /* svc 13 table entry*/
   [SYS_PROGRAM_WAIT] = sys_program_wait_impl,
 };
 
