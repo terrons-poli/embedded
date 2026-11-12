@@ -243,10 +243,11 @@ clean:
 
 # Use tracked C sources and headers so build outputs are never formatted.
 # Preserve the professor-supplied test programs as published.
+# Preserve the vendored ELF header as supplied upstream.
 # NUL separators keep filenames containing spaces intact.
 format:
-	git ls-files -z -- '*.c' '*.h' ':!test-kit/**' | xargs -0 $(CLANG_FORMAT) --style=file -i
+	git ls-files -z -- '*.c' '*.h' ':!test-kit/**' ':!include/elf.h' | xargs -0 $(CLANG_FORMAT) --style=file -i
 
 # --dry-run leaves files untouched; --Werror makes differences fail the check.
 format-check:
-	git ls-files -z -- '*.c' '*.h' ':!test-kit/**' | xargs -0 $(CLANG_FORMAT) --style=file --dry-run --Werror
+	git ls-files -z -- '*.c' '*.h' ':!test-kit/**' ':!include/elf.h' | xargs -0 $(CLANG_FORMAT) --style=file --dry-run --Werror
