@@ -260,6 +260,34 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
   return 1;
 }
 
+/* Requires a validated ELF whose allocated sections are already loaded. */
+static void apply_relocations( const struct elf_image *elf, uintptr_t slot_base )
+{
+  const uint8_t *elf_bytes = (const uint8_t *) elf->ehdr;
+
+  for ( uint16_t i = 0; i < elf->sh_count; ++i )
+  {
+    const Elf32_Shdr *section = &elf->shdrs[i];
+    if ( section->sh_type != SHT_REL )
+      continue;
+
+    const Elf32_Shdr *target = &elf->shdrs[section->sh_info];
+    if ( !( target->sh_flags & SHF_ALLOC ) )
+      continue;
+
+    const Elf32_Rel *rels = (const Elf32_Rel *) ( elf_bytes + section->sh_offset );
+    uint32_t relcount = section->sh_size / section->sh_entsize;
+    for ( uint32_t r = 0; r < relcount; ++r )
+    {
+      if ( ELF32_R_TYPE( rels[r].r_info ) != R_ARM_ABS32 )
+        continue;
+
+      uint32_t *site = (uint32_t *) ( slot_base + rels[r].r_offset );
+      *site += slot_base;
+    }
+  }
+}
+
 static unsigned int search_elf( const struct img1_directory_entry *directory, struct elf_image *elf )
 {
   if ( !directory )
@@ -273,7 +301,7 @@ static unsigned int search_elf( const struct img1_directory_entry *directory, st
 static const int copy_data( const struct img1_directory_entry *entry, const int slot )
 {
   struct elf_image *elf = NULL;
-  if ( search_elf( entry, elf ) )
+  if ( !search_elf( entry, elf ) )
     return 0;
 
   /*TODO:Copy data code*/

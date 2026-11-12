@@ -33,4 +33,5 @@ struct elf_image {
 };
 
 int load_program( const uint8_t *name );
-#endif //
+
+#endif // LOADER_H
