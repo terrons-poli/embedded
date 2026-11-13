@@ -57,8 +57,8 @@ static unsigned int same_name( const uint8_t *a, const uint8_t *b )
  * Program contents are deliberately not validated here: a valid image may
  * contain a bad ELF. No diagnostics are printed; callers select the required
  * ls/run error. The buffer may be unaligned. */
-/* Unused until loader integration; keep this helper private to this file. */
-static unsigned int __attribute__( ( unused ) ) img1_validate( const void *image, size_t available_size )
+
+static unsigned int img1_validate( const void *image, size_t available_size )
 {
   if ( image == NULL || available_size < IMG1_HEADER_SIZE )
     return 0;
@@ -105,6 +105,7 @@ static unsigned int __attribute__( ( unused ) ) img1_validate( const void *image
   }
   return 1;
 }
+
 
 static int find_free_memory_slot()
 {
@@ -389,3 +390,54 @@ int load_program( const char *name )
   
   return task_id;
 } 
+
+/* Directory entry `index` of the FLASH image, or NULL when the image is
+ * invalid or the index is outside the directory. The name is the first
+ * IMG1_NAME_SIZE bytes. index is checked before the offset multiply, and
+ * validation has already bounded that multiply by the image size. */
+static const uint8_t *img1_entry_at( unsigned index )
+{
+  if ( !img1_validate( IMG1, IMG1_MAX_SIZE ) )
+    return NULL;
+  const uint8_t *bytes = (const uint8_t *) IMG1;
+  uint32_t count = read_u32( bytes + 12 );
+  if ( index >= count )
+    return NULL;
+  uint32_t directory_offset = read_u32( bytes + 16 );
+  return bytes + directory_offset + (uint32_t) index * IMG1_ENTRY_SIZE;
+}
+
+int img1_count( void )
+{
+  if ( !img1_validate( IMG1, IMG1_MAX_SIZE ) )
+    return -1;
+  return (int) read_u32( (const uint8_t *) IMG1 + 12 );
+}
+
+int img1_name( unsigned index, char *name, unsigned capacity )
+{
+  /* capacity 0 has no room for the required NUL. A larger capacity is not
+   * a directory field, so refuse it before any store. */
+  if ( name == NULL || capacity < 1 || capacity > IMG1_NAME_SIZE )
+    return -1;
+  const uint8_t *entry = img1_entry_at( index );
+  if ( entry == NULL )
+    return -1;
+  unsigned int length = 0;
+  while ( length < IMG1_NAME_SIZE && entry[length] != 0 )
+    ++length;
+  /* A valid directory name always contains a NUL inside the field. */
+  if ( length == 0 || length == IMG1_NAME_SIZE )
+    return -1;
+  /* length + 1 counts the NUL. It fits in the field, so the add cannot wrap. */
+  unsigned int stored = length + 1;
+  if ( stored > capacity )
+    stored = capacity;
+  for ( unsigned int i = 0; i + 1 < stored; ++i )
+    name[i] = (char) entry[i];
+  name[stored - 1] = 0;
+  if ( stored != length + 1 )
+    return -1;
+  return 0;
+}
+
