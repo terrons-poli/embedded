@@ -33,7 +33,6 @@ extern uint32_t _idle_data_start[], _idle_data_end[];
 extern const uint32_t _idle_data_load[];
 extern uint32_t __program_slots_start[];
 
-#define PROGRAM_SLOT_SIZE 4096u
 
 /* The shell entry is deliberately empty in the base. Student shell code
  * configures it through task_project_configure(). The reusable slots and all

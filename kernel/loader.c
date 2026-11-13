@@ -7,6 +7,8 @@
 #define IMG1_NAME_SIZE 16U
 #define IMG1_MAX_COUNT 32U
 
+extern uint32_t __program_slots_start[];
+
 _Static_assert( sizeof( struct img1_header ) == IMG1_HEADER_SIZE, "IMG1 header layout" );
 _Static_assert( sizeof( struct img1_directory_entry ) == IMG1_ENTRY_SIZE, "IMG1 directory layout" );
 
@@ -202,8 +204,7 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     /*Check relocation section*/
     const Elf32_Rel *rels = (const Elf32_Rel *) ( elf_raw + shdrs[i].sh_offset );
     uint32_t relcount = shdrs[i].sh_size / 8;
-
-    for ( uint32_t r = 0; r < relcount; r++ )
+   for ( uint32_t r = 0; r < relcount; r++ )
     {
       uint32_t r_type = ELF32_R_TYPE( rels[r].r_info );
       uint32_t r_sym = ELF32_R_SYM( rels[r].r_info );
@@ -304,14 +305,12 @@ static unsigned int search_elf( const struct img1_directory_entry *directory, st
 static int copy_data( const struct img1_directory_entry *entry, const int slot )
 {
   struct elf_image elf;
-  if ( !search_elf( entry, &elf ) )
+  if ( !search_elf( entry, &elf) )
     return 0;
 
   /*retrieve the RAM boundaries for this slot*/
-  int task_index = PROGRAM_TASK_FIRST + slot;
-  uintptr_t ram_base = tasks[task_index].part_start;
-  uintptr_t ram_end = tasks[task_index].part_end;
-
+  uint32_t ram_base = (uint32_t) __program_slots_start + slot * PROGRAM_SLOT_SIZE;
+	uint32_t ram_end = ram_base + PROGRAM_SLOT_SIZE;
   /*It finds the starting point in the flash*/
   const uint8_t *flash_base = (const uint8_t *) IMG1 + entry->offset;
 
@@ -329,13 +328,13 @@ static int copy_data( const struct img1_directory_entry *entry, const int slot )
         return 0;
       
       /*Check that the segment does not require more RAM than what has been allocated to the slot*/
-      uintptr_t segment_dest_end = ram_base + phdr->p_offset + phdr->p_memsz;
+      uintptr_t segment_dest_end = ram_base + phdr->p_vaddr + phdr->p_memsz;
       if( segment_dest_end > ram_end)
         return 0;
       
       /*define the source (Flash) and destination (RAM) pointers for the segment*/
       const uint8_t *src = flash_base + phdr->p_offset;
-      uint8_t *dest = ram_ptr + phdr->p_offset;
+      uint8_t *dest = ram_ptr + phdr->p_vaddr;
 
       /* copy of the initialized data (.text and .data)*/
       for (uint32_t j = 0; j < phdr->p_filesz; j++)
@@ -361,7 +360,7 @@ applies relocations, and creates a corresponding task in the kernel scheduler. *
 int load_program( const char *name )
 {
 
-  if ( !validate_program_name( (const uint8_t *)name ) )
+  if ( !validate_program_name( (const uint8_t *)name ) || !img1_validate(IMG1,IMG1_MAX_SIZE) )
     return -1;
 
   const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *)name );
@@ -383,13 +382,13 @@ int load_program( const char *name )
 
   /* Determine the task array index and set the stack pointer to the top (end) 
    * of the RAM partition, since the ARM stack grows downward.*/
-  int task_index = PROGRAM_TASK_FIRST + free_slot;
-  uint32_t *stack_top = (uint32_t *)tasks[task_index].part_end;
+  uint32_t slot_base = (uint32_t) __program_slots_start + free_slot * PROGRAM_SLOT_SIZE;
+  uint32_t *stack_top = (uint32_t *)(slot_base + PROGRAM_SLOT_SIZE);
 
   /* Register the task in the kernel scheduler*/
   int task_id = task_program_create( free_slot,
                                      name,
-                                     (void (*)(void)) elf.entry_point,
+                                     (void (*)(void)) (slot_base + elf.entry_point),
                                      stack_top,
                                      1);
   
