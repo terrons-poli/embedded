@@ -298,13 +298,61 @@ static unsigned int search_elf( const struct img1_directory_entry *directory, st
   return validate_elf( ehdr, directory->size, elf );
 }
 
-static const int copy_data( const struct img1_directory_entry *entry, const int slot )
+/*Parses the ELF image of a program, validates its segment boundaries,
+* copies PT_LOAD segments from Flash to the assigned RAM slot, zero-initializes
+* the .bss sections, and applies ELF relocations.*/
+static int copy_data( const struct img1_directory_entry *entry, const int slot )
 {
-  struct elf_image *elf = NULL;
-  if ( !search_elf( entry, elf ) )
+  struct elf_image elf;
+  if ( !search_elf( entry, &elf ) )
     return 0;
 
-  /*TODO:Copy data code*/
+  /*retrieve the RAM boundaries for this slot*/
+  int task_index = PROGRAM_TASK_FIRST + slot;
+  uintptr_t ram_base = tasks[task_index].part_start;
+  uintptr_t ram_end = tasks[task_index].part_end;
+
+  /*It finds the starting point in the flash*/
+  const uint8_t *flash_base = (const uint8_t *) IMG1 + entry->offset;
+
+  uint8_t *ram_ptr = (uint8_t *) ram_base;
+
+  /*Explore the Program Headers to find the segments to be loaded*/
+  for( uint16_t i=0; i<elf.ph_count; i++)
+  {
+    const Elf32_Phdr *phdr = &elf.phdrs[i];
+
+    if(phdr->p_type == PT_LOAD)
+    {
+      /* Check that the block to be read does not extend beyond the physical end of the file in the Flash memory*/
+      if (phdr->p_offset + phdr->p_filesz > entry->size)
+        return 0;
+      
+      /*Check that the segment does not require more RAM than what has been allocated to the slot*/
+      uintptr_t segment_dest_end = ram_base + phdr->p_offset + phdr->p_memsz;
+      if( segment_dest_end > ram_end)
+        return 0;
+      
+      /*define the source (Flash) and destination (RAM) pointers for the segment*/
+      const uint8_t *src = flash_base + phdr->p_offset;
+      uint8_t *dest = ram_ptr + phdr->p_offset;
+
+      /* copy of the initialized data (.text and .data)*/
+      for (uint32_t j = 0; j < phdr->p_filesz; j++)
+      {
+        dest[j] = src[j];
+      }
+
+      /*zeroing of uninitialized memory (.bss)*/
+      for (uint32_t j = phdr->p_filesz; j < phdr->p_memsz; j++)
+      {
+        dest[j] = 0;
+      }
+    }
+  }
+apply_relocations(&elf, ram_base);
+
+return 1;
 }
 
 
@@ -317,12 +365,10 @@ int load_program( const char *name )
     return -1;
 
   const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *)name );
-
   if ( !entry )
     return -2;
 
   const int free_slot = find_free_memory_slot();
-
   if ( free_slot < 0 )
     return -3;
 
