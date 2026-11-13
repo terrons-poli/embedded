@@ -199,7 +199,6 @@ static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   return (uint32_t) task_wait_program( a0, &frame[0] );
 }
 
-
 static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
   (void) a0;
@@ -207,7 +206,6 @@ static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   (void) a2;
   return (uint32_t) img1_count();
 }
-
 
 /* SYS_IMAGE_NAME: a0 = index, a1 = destination, a2 = capacity.
  * Copy one directory name into the caller's own RAM. FLASH is a legal
@@ -224,7 +222,6 @@ static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return (uint32_t) -1;
   return (uint32_t) img1_name( a0, (char *) a1, a2 );
 }
-
 
 /* The dispatch table: table[n] is the function for service n.
  * The [SYS_WRITE] = ... form puts each entry at its number, whatever
