@@ -1,11 +1,13 @@
 #include "kernel/loader.h"
 #include <stddef.h>
 #include "kernel/task.h"
+#include "kernel/kprintf.h"
 
 #define IMG1_HEADER_SIZE 20U
 #define IMG1_ENTRY_SIZE 24U
 #define IMG1_NAME_SIZE 16U
 #define IMG1_MAX_COUNT 32U
+#define MAX_PROGRAM_SIZE (PROGRAM_SLOT_SIZE - PROGRAM_STACK_SIZE)
 
 extern uint32_t __program_slots_start[];
 
@@ -145,14 +147,16 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     return 0;
 
   /*Size validation*/
-  if ( ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40 || ehdr->e_shnum == 0 || ehdr->e_phnum == 0 )
+  if ( ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40 || ehdr->e_shnum == 0 || ehdr->e_phnum == 0 ){
     return 0;
+	}
 
   uint32_t ph_table_end = ehdr->e_phoff + ( (uint32_t) ehdr->e_phnum * 32u );
   uint32_t sh_table_end = ehdr->e_shoff + ( (uint32_t) ehdr->e_shnum * 40u );
 
   if ( ph_table_end > file_size || sh_table_end > file_size )
     return 0;
+	
 
   const Elf32_Shdr *shdrs = (const Elf32_Shdr *) ( elf_raw + ehdr->e_shoff );
   const uint16_t shdrcount = ehdr->e_shnum;
@@ -165,13 +169,14 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     if ( shdrs[i].sh_type == SHT_RELA ||   /*RELA section*/
          shdrs[i].sh_type == SHT_DYNAMIC ) /*Dynamic linking section*/
       return 0;
+		
 
     if ( shdrs[i].sh_type == SHT_SYMTAB )
     { /* Check symbol entries size*/
       if ( shdrs[i].sh_entsize != 16 )
         return 0;
       symtable = (const Elf32_Sym *) ( elf_raw + shdrs[i].sh_offset );
-      symcount = symtable->st_size / 16;
+      symcount = shdrs[i].sh_size / 16;
     }
     if ( shdrs[i].sh_type != SHT_NOBITS )
     {
@@ -212,19 +217,28 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
 
       if ( r_type != R_ARM_ABS32 &&
            r_type != R_ARM_THM_PC22 && /*Old newlib alias for R_ARM_THM_CALL*/
-           r_type != R_ARM_THM_JUMP24 )
-        return 0;
+					 r_type != R_ARM_THM_JUMP24 ){
+				kprintf("loader: unsupported relocation type %u\n",r_type);	
+				return 0;
+			}
 
-      if ( rels[r].r_offset + 4 > target->sh_size ) /* The patched target field is 4 bytes wide */
+		/* In ET_EXEC files, r_offset is a virtual address relative to the image base
+ 			* (not an offset from the start of the target section). Verify that the 4-byte
+ 			* patched site falls strictly within [target->sh_addr, target->sh_addr + target->sh_size]
+	 		* to prevent out-of-bounds writes and integer wrap-around. */        
+      if ( rels[r].r_offset < target->sh_addr || 
+					 rels[r].r_offset + 4 < rels[r].r_offset ||
+					 rels[r].r_offset - target->sh_addr + 4 > target->sh_size) /*If rel section fits the size*/
         return 0;
 
       if ( r_sym >= symcount )
         return 0;
 
-      if ( symtable[r_sym].st_shndx == SHN_UNDEF ) // The symbol must exist in the table
+      if ( symtable[r_sym].st_shndx == SHN_UNDEF ){ // The symbol must exist in the table
         return 0;
     }
   }
+}
 
   /*Program headers validation*/
   const Elf32_Phdr *phdrs = (const Elf32_Phdr *) ( elf_raw + ehdr->e_phoff );
@@ -238,17 +252,22 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
       /*The segment must be smaller than file_size*/
       if ( phdrs[i].p_offset + phdrs[i].p_filesz > file_size || phdrs[i].p_memsz < phdrs[i].p_filesz )
         return 0;
+		if( phdrs[i].p_vaddr > MAX_PROGRAM_SIZE ||
+				phdrs[i].p_memsz > MAX_PROGRAM_SIZE - phdrs[i].p_vaddr)
+			return 0;
     }
     /*No dynamic links*/
     if ( phdrs[i].p_type == PT_DYNAMIC || phdrs[i].p_type == PT_INTERP )
       return 0;
+		/*Check if program fits a RAM slot*/
   }
 
   if ( loadcount == 0 )
     return 0;
 
-  if ( ( ehdr->e_entry & 1u ) == 0 ) /*Thumb entry point*/
-    return 0;
+		if ( ( ehdr->e_entry & 1u ) == 0 ){ /*Thumb entry point*/
+    	return 0;
+		}
 
   /*Fill the structure*/
   elf->ehdr = ehdr;
