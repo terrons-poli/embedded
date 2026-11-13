@@ -307,13 +307,16 @@ static const int copy_data( const struct img1_directory_entry *entry, const int 
   /*TODO:Copy data code*/
 }
 
-int load_program( const uint8_t *name )
+
+/* Load an executable program from the IMG1 Flash image into a free RAM slot,
+applies relocations, and creates a corresponding task in the kernel scheduler. */
+int load_program( const char *name )
 {
 
-  if ( !validate_program_name( name ) )
+  if ( !validate_program_name( (const uint8_t *)name ) )
     return -1;
 
-  const struct img1_directory_entry *entry = find_directory_by_name( name );
+  const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *)name );
 
   if ( !entry )
     return -2;
@@ -323,5 +326,26 @@ int load_program( const uint8_t *name )
   if ( free_slot < 0 )
     return -3;
 
-  /*TODO: Copy data from FLASH to RAM in the slot saved in free_slot*/
-}
+  /* Copy segments from Flash to RAM and apply ELF relocations */
+  if (!copy_data( entry, free_slot ) )
+    return -1;
+
+  /* Re-parse the ELF image to extract runtime metadata (e.g., entry point)*/  
+  struct elf_image elf;
+  if(!search_elf( entry, &elf))
+    return -1;
+
+  /* Determine the task array index and set the stack pointer to the top (end) 
+   * of the RAM partition, since the ARM stack grows downward.*/
+  int task_index = PROGRAM_TASK_FIRST + free_slot;
+  uint32_t *stack_top = (uint32_t *)tasks[task_index].part_end;
+
+  /* Register the task in the kernel scheduler*/
+  int task_id = task_program_create( free_slot,
+                                     name,
+                                     (void (*)(void)) elf.entry_point,
+                                     stack_top,
+                                     1);
+  
+  return task_id;
+} 

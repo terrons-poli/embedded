@@ -32,6 +32,6 @@ struct elf_image {
   uint32_t entry_point; /*e_entry*/
 };
 
-int load_program( const uint8_t *name );
+int load_program( const char *name );
 
 #endif // LOADER_H
