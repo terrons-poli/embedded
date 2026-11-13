@@ -302,14 +302,13 @@ static unsigned int search_elf( const struct img1_directory_entry *directory, st
 /*Parses the ELF image of a program, validates its segment boundaries,
 * copies PT_LOAD segments from Flash to the assigned RAM slot, zero-initializes
 * the .bss sections, and applies ELF relocations.*/
-static int copy_data( const struct img1_directory_entry *entry, const int slot )
+static int copy_data( const struct img1_directory_entry *entry,uint32_t ram_base ,struct elf_image *elf	)
 {
-  struct elf_image elf;
-  if ( !search_elf( entry, &elf) )
+  
+  if ( !search_elf( entry, elf) )
     return 0;
 
   /*retrieve the RAM boundaries for this slot*/
-  uint32_t ram_base = (uint32_t) __program_slots_start + slot * PROGRAM_SLOT_SIZE;
 	uint32_t ram_end = ram_base + PROGRAM_SLOT_SIZE;
   /*It finds the starting point in the flash*/
   const uint8_t *flash_base = (const uint8_t *) IMG1 + entry->offset;
@@ -317,9 +316,9 @@ static int copy_data( const struct img1_directory_entry *entry, const int slot )
   uint8_t *ram_ptr = (uint8_t *) ram_base;
 
   /*Explore the Program Headers to find the segments to be loaded*/
-  for( uint16_t i=0; i<elf.ph_count; i++)
+  for( uint16_t i=0; i<elf->ph_count; i++)
   {
-    const Elf32_Phdr *phdr = &elf.phdrs[i];
+    const Elf32_Phdr *phdr = &elf->phdrs[i];
 
     if(phdr->p_type == PT_LOAD)
     {
@@ -349,7 +348,7 @@ static int copy_data( const struct img1_directory_entry *entry, const int slot )
       }
     }
   }
-apply_relocations(&elf, ram_base);
+apply_relocations(elf, ram_base);
 
 return 1;
 }
@@ -371,18 +370,14 @@ int load_program( const char *name )
   if ( free_slot < 0 )
     return -3;
 
-  /* Copy segments from Flash to RAM and apply ELF relocations */
-  if (!copy_data( entry, free_slot ) )
-    return -1;
-
-  /* Re-parse the ELF image to extract runtime metadata (e.g., entry point)*/  
+  uint32_t slot_base = (uint32_t) __program_slots_start + free_slot * PROGRAM_SLOT_SIZE;
   struct elf_image elf;
-  if(!search_elf( entry, &elf))
+  /* Copy segments from Flash to RAM and apply ELF relocations */
+  if (!copy_data( entry, slot_base,&elf) )
     return -1;
 
   /* Determine the task array index and set the stack pointer to the top (end) 
    * of the RAM partition, since the ARM stack grows downward.*/
-  uint32_t slot_base = (uint32_t) __program_slots_start + free_slot * PROGRAM_SLOT_SIZE;
   uint32_t *stack_top = (uint32_t *)(slot_base + PROGRAM_SLOT_SIZE);
 
   /* Register the task in the kernel scheduler*/
