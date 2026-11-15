@@ -96,7 +96,10 @@ int sys_image_count( void );
  * -1 for an invalid image, index, or destination. */
 int sys_image_name( unsigned index, char *name, unsigned capacity );
 
-/* Load and start name. Return a non-negative task id, or -1 on error. */
+/* Load and start name. Return a non-negative task id, or:
+ * -1 invalid pointer/string/image, -2 not found, -3 no free slot,
+ * -4 invalid program file. Name must end with NUL within 16 bytes;
+ * each byte must belong to the caller's partition or FLASH. */
 int sys_program_run( const char *name );
 
 /* Block until task_id ends. Return its exit status, or -1 on error. */

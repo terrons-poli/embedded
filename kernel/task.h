@@ -31,6 +31,8 @@
 #define QUANTUM 5
 #endif
 
+#define PROGRAM_SLOT_SIZE 4096u
+#define PROGRAM_STACK_SIZE 1024u /*program stack size*/
 /* The states of a task. */
 enum task_state {
   TASK_UNUSED,

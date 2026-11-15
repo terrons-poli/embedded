@@ -19,7 +19,7 @@
  * delay_until and exit. They do not switch here. They only change the
  * task's state and make PendSV pending (task_request_switch()). PendSV
  * has a lower priority than SVCall (0xE0 against 0x80), so it waits:
- * it runs right after this exception ends, and switches then. That is
+* it runs right after this exception ends, and switches then. That is
  * why exit can now be an ordinary entry of the table: by the time the
  * task would resume after its `svc`, PendSV has already switched away,
  * and a FINISHED task is never chosen again.
@@ -32,6 +32,7 @@
 #include "drivers/systick.h"
 #include "kernel/task.h"
 #include "kernel/trace.h"
+#include "kernel/loader.h"
 
 #include "kernel/loader.h"
 /* Every service has the same shape: up to three arguments (the
@@ -188,6 +189,33 @@ static uint32_t sys_trace_dump_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   return 0;
 }
 
+static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+
+  (void) a1; /*not used*/
+  (void) a2;
+
+  if ( tcb_current == 0 )
+    return (uint32_t) -1;
+
+  /* Copy one checked byte at a time: a string may end at the edge of an
+   * allowed range. Checking a full 16-byte buffer would reject such names. */
+  char name[IMG1_NAME_SIZE];
+  for ( unsigned i = 0; i < sizeof( name ); ++i )
+  {
+    if ( a0 > UINT32_MAX - i )
+      return (uint32_t) -1;
+    uint32_t address = a0 + i;
+    if ( !in_range( address, 1, tcb_current->part_start, tcb_current->part_end ) &&
+         !in_range( address, 1, 0, 0x00400000 ) )
+      return (uint32_t) -1;
+    name[i] = *(const char *) address;
+    if ( name[i] == '\0' )
+      return i == 0 ? (uint32_t) -1 : (uint32_t) load_program( name );
+  }
+  return (uint32_t) -1;
+}
+
 /* Wait bookkeeping is supplied even though the untouched base has no loader.
  * Student loader code supplies SYS_PROGRAM_RUN and creates program tasks. */
 static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
@@ -238,6 +266,7 @@ static const syscall_fn table[] = {
   [SYS_DELAY_UNTIL] = sys_delay_until_impl,
   [SYS_TRACE_DUMP] = sys_trace_dump_impl,
   [SYS_TICK_COUNT] = sys_tick_count_impl,
+  [SYS_PROGRAM_RUN] = sys_program_run_impl, /* svc 13 table entry*/
   [SYS_IMAGE_COUNT] = sys_image_count_impl,
   [SYS_IMAGE_NAME] = sys_image_name_impl,
   [SYS_PROGRAM_WAIT] = sys_program_wait_impl,

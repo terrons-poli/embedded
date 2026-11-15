@@ -2,6 +2,7 @@
 #define LOADER_H
 
 #include <stdint.h>
+#include <elf.h>
 
 #define IMG1_MAX_SIZE ( 1UL << 21 )
 #define IMG1 ( (const struct img1_header *) 0x00200000 )
@@ -21,6 +22,20 @@ struct img1_directory_entry {
   uint32_t size;
 };
 
+struct elf_image {
+  const Elf32_Ehdr *ehdr;  /* elf header */
+  const Elf32_Phdr *phdrs; /*program headers*/
+  uint16_t ph_count;
+  const Elf32_Shdr *shdrs; /* section headers*/
+  uint16_t sh_count;
+  uint32_t entry_point; /*e_entry*/
+};
+
+/* Kernel-only: name must already be a readable, nonempty NUL-terminated
+ * string of at most 15 characters. SVC 13 checks/copies caller memory.
+ * Returns a task id, -1 for invalid IMG1, -2 for no match, -3 for a full
+ * slot table, or -4 for invalid program contents. */
+int load_program( const char *name );
 /* Number of directory entries in the FLASH image at IMG1.
  * Returns 1..32, or -1 when the image breaks assignment section 6.1.
  * The image is read in place: nothing is copied and nothing is printed. */
