@@ -7,7 +7,7 @@
 #define IMG1_ENTRY_SIZE 24U
 #define IMG1_NAME_SIZE 16U
 #define IMG1_MAX_COUNT 32U
-#define MAX_PROGRAM_SIZE (PROGRAM_SLOT_SIZE - PROGRAM_STACK_SIZE)
+#define MAX_PROGRAM_SIZE ( PROGRAM_SLOT_SIZE - PROGRAM_STACK_SIZE )
 
 extern uint32_t __program_slots_start[];
 
@@ -108,7 +108,6 @@ static unsigned int img1_validate( const void *image, size_t available_size )
   return 1;
 }
 
-
 static int find_free_memory_slot()
 {
   for ( uint32_t i = 0; i < PROGRAM_SLOT_COUNT; i++ )
@@ -147,16 +146,14 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     return 0;
 
   /*Size validation*/
-  if ( ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40 || ehdr->e_shnum == 0 || ehdr->e_phnum == 0 ){
+  if ( ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40 || ehdr->e_shnum == 0 || ehdr->e_phnum == 0 )
     return 0;
-	}
 
   uint32_t ph_table_end = ehdr->e_phoff + ( (uint32_t) ehdr->e_phnum * 32u );
   uint32_t sh_table_end = ehdr->e_shoff + ( (uint32_t) ehdr->e_shnum * 40u );
 
   if ( ph_table_end > file_size || sh_table_end > file_size )
     return 0;
-	
 
   const Elf32_Shdr *shdrs = (const Elf32_Shdr *) ( elf_raw + ehdr->e_shoff );
   const uint16_t shdrcount = ehdr->e_shnum;
@@ -169,7 +166,6 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     if ( shdrs[i].sh_type == SHT_RELA ||   /*RELA section*/
          shdrs[i].sh_type == SHT_DYNAMIC ) /*Dynamic linking section*/
       return 0;
-		
 
     if ( shdrs[i].sh_type == SHT_SYMTAB )
     { /* Check symbol entries size*/
@@ -210,35 +206,37 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     /*Check relocation section*/
     const Elf32_Rel *rels = (const Elf32_Rel *) ( elf_raw + shdrs[i].sh_offset );
     uint32_t relcount = shdrs[i].sh_size / 8;
-   for ( uint32_t r = 0; r < relcount; r++ )
+    for ( uint32_t r = 0; r < relcount; r++ )
     {
       uint32_t r_type = ELF32_R_TYPE( rels[r].r_info );
       uint32_t r_sym = ELF32_R_SYM( rels[r].r_info );
 
       if ( r_type != R_ARM_ABS32 &&
            r_type != R_ARM_THM_PC22 && /*Old newlib alias for R_ARM_THM_CALL*/
-					 r_type != R_ARM_THM_JUMP24 ){
-				kprintf("loader: unsupported relocation type %u\n",r_type);	
-				return 0;
-			}
+           r_type != R_ARM_THM_JUMP24 )
+      {
+        kprintf( "loader: unsupported relocation type %u\n", r_type );
+        return 0;
+      }
 
-		/* In ET_EXEC files, r_offset is a virtual address relative to the image base
+      /* In ET_EXEC files, r_offset is a virtual address relative to the image base
  			* (not an offset from the start of the target section). Verify that the 4-byte
  			* patched site falls strictly within [target->sh_addr, target->sh_addr + target->sh_size]
-	 		* to prevent out-of-bounds writes and integer wrap-around. */        
-      if ( rels[r].r_offset < target->sh_addr || 
-					 rels[r].r_offset + 4 < rels[r].r_offset ||
-					 rels[r].r_offset - target->sh_addr + 4 > target->sh_size) /*If rel section fits the size*/
+      * to prevent out-of-bounds writes and integer wrap-around. */
+      if ( rels[r].r_offset < target->sh_addr ||
+           rels[r].r_offset + 4 < rels[r].r_offset ||
+           rels[r].r_offset - target->sh_addr + 4 > target->sh_size ) /*If rel section fits the size*/
         return 0;
 
       if ( r_sym >= symcount )
         return 0;
 
-      if ( symtable[r_sym].st_shndx == SHN_UNDEF ){ // The symbol must exist in the table
+      if ( symtable[r_sym].st_shndx == SHN_UNDEF )
+      { // The symbol must exist in the table
         return 0;
+      }
     }
   }
-}
 
   /*Program headers validation*/
   const Elf32_Phdr *phdrs = (const Elf32_Phdr *) ( elf_raw + ehdr->e_phoff );
@@ -252,22 +250,23 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
       /*The segment must be smaller than file_size*/
       if ( phdrs[i].p_offset + phdrs[i].p_filesz > file_size || phdrs[i].p_memsz < phdrs[i].p_filesz )
         return 0;
-		if( phdrs[i].p_vaddr > MAX_PROGRAM_SIZE ||
-				phdrs[i].p_memsz > MAX_PROGRAM_SIZE - phdrs[i].p_vaddr)
-			return 0;
+      if ( phdrs[i].p_vaddr > MAX_PROGRAM_SIZE ||
+           phdrs[i].p_memsz > MAX_PROGRAM_SIZE - phdrs[i].p_vaddr )
+        return 0;
     }
     /*No dynamic links*/
     if ( phdrs[i].p_type == PT_DYNAMIC || phdrs[i].p_type == PT_INTERP )
       return 0;
-		/*Check if program fits a RAM slot*/
+    /*Check if program fits a RAM slot*/
   }
 
   if ( loadcount == 0 )
     return 0;
 
-		if ( ( ehdr->e_entry & 1u ) == 0 ){ /*Thumb entry point*/
-    	return 0;
-		}
+  if ( ( ehdr->e_entry & 1u ) == 0 )
+  { /*Thumb entry point*/
+    return 0;
+  }
 
   /*Fill the structure*/
   elf->ehdr = ehdr;
@@ -322,67 +321,62 @@ static unsigned int search_elf( const struct img1_directory_entry *directory, st
 /*Parses the ELF image of a program, validates its segment boundaries,
 * copies PT_LOAD segments from Flash to the assigned RAM slot, zero-initializes
 * the .bss sections, and applies ELF relocations.*/
-static int copy_data( const struct img1_directory_entry *entry,uint32_t ram_base ,struct elf_image *elf	)
+static int copy_data( const struct img1_directory_entry *entry, uint32_t ram_base, struct elf_image *elf )
 {
-  
-  if ( !search_elf( entry, elf) )
+
+  if ( !search_elf( entry, elf ) )
     return 0;
 
   /*retrieve the RAM boundaries for this slot*/
-	uint32_t ram_end = ram_base + PROGRAM_SLOT_SIZE;
+  uint32_t ram_end = ram_base + PROGRAM_SLOT_SIZE;
   /*It finds the starting point in the flash*/
   const uint8_t *flash_base = (const uint8_t *) IMG1 + entry->offset;
 
   uint8_t *ram_ptr = (uint8_t *) ram_base;
 
   /*Explore the Program Headers to find the segments to be loaded*/
-  for( uint16_t i=0; i<elf->ph_count; i++)
+  for ( uint16_t i = 0; i < elf->ph_count; i++ )
   {
     const Elf32_Phdr *phdr = &elf->phdrs[i];
 
-    if(phdr->p_type == PT_LOAD)
+    if ( phdr->p_type == PT_LOAD )
     {
       /* Check that the block to be read does not extend beyond the physical end of the file in the Flash memory*/
-      if (phdr->p_offset + phdr->p_filesz > entry->size)
+      if ( phdr->p_offset + phdr->p_filesz > entry->size )
         return 0;
-      
+
       /*Check that the segment does not require more RAM than what has been allocated to the slot*/
       uintptr_t segment_dest_end = ram_base + phdr->p_vaddr + phdr->p_memsz;
-      if( segment_dest_end > ram_end)
+      if ( segment_dest_end > ram_end )
         return 0;
-      
+
       /*define the source (Flash) and destination (RAM) pointers for the segment*/
       const uint8_t *src = flash_base + phdr->p_offset;
       uint8_t *dest = ram_ptr + phdr->p_vaddr;
 
       /* copy of the initialized data (.text and .data)*/
-      for (uint32_t j = 0; j < phdr->p_filesz; j++)
-      {
+      for ( uint32_t j = 0; j < phdr->p_filesz; j++ )
         dest[j] = src[j];
-      }
 
       /*zeroing of uninitialized memory (.bss)*/
-      for (uint32_t j = phdr->p_filesz; j < phdr->p_memsz; j++)
-      {
+      for ( uint32_t j = phdr->p_filesz; j < phdr->p_memsz; j++ )
         dest[j] = 0;
-      }
     }
   }
-apply_relocations(elf, ram_base);
+  apply_relocations( elf, ram_base );
 
-return 1;
+  return 1;
 }
-
 
 /* Load an executable program from the IMG1 Flash image into a free RAM slot,
 applies relocations, and creates a corresponding task in the kernel scheduler. */
 int load_program( const char *name )
 {
 
-  if ( !validate_program_name( (const uint8_t *)name ) || !img1_validate(IMG1,IMG1_MAX_SIZE) )
+  if ( !validate_program_name( (const uint8_t *) name ) || !img1_validate( IMG1, IMG1_MAX_SIZE ) )
     return -1;
 
-  const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *)name );
+  const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *) name );
   if ( !entry )
     return -2;
 
@@ -393,22 +387,22 @@ int load_program( const char *name )
   uint32_t slot_base = (uint32_t) __program_slots_start + free_slot * PROGRAM_SLOT_SIZE;
   struct elf_image elf;
   /* Copy segments from Flash to RAM and apply ELF relocations */
-  if (!copy_data( entry, slot_base,&elf) )
+  if ( !copy_data( entry, slot_base, &elf ) )
     return -1;
 
   /* Determine the task array index and set the stack pointer to the top (end) 
    * of the RAM partition, since the ARM stack grows downward.*/
-  uint32_t *stack_top = (uint32_t *)(slot_base + PROGRAM_SLOT_SIZE);
+  uint32_t *stack_top = (uint32_t *) ( slot_base + PROGRAM_SLOT_SIZE );
 
   /* Register the task in the kernel scheduler*/
   int task_id = task_program_create( free_slot,
                                      name,
-                                     (void (*)(void)) (slot_base + elf.entry_point),
+                                     ( void ( * )( void ) )( slot_base + elf.entry_point ),
                                      stack_top,
-                                     1);
-  
+                                     1 );
+
   return task_id;
-} 
+}
 
 /* Directory entry `index` of the FLASH image, or NULL when the image is
  * invalid or the index is outside the directory. The name is the first
@@ -459,4 +453,3 @@ int img1_name( unsigned index, char *name, unsigned capacity )
     return -1;
   return 0;
 }
-

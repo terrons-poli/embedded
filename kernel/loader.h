@@ -47,5 +47,4 @@ int img1_count( void );
  * lies in the caller's RAM partition. FLASH is not a valid destination. */
 int img1_name( unsigned index, char *name, unsigned capacity );
 
-
 #endif // LOADER_H
