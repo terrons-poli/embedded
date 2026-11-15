@@ -40,7 +40,7 @@ static unsigned int validate_program_name( const uint8_t *name )
   return 0;
 }
 
-/* Both names have already passed validation. Ignore bytes after the NUL. */
+/* Names are bounded and NUL-terminated. Ignore bytes after the NUL. */
 static unsigned int same_name( const uint8_t *a, const uint8_t *b )
 {
   for ( unsigned int i = 0; i < IMG1_NAME_SIZE; ++i )
@@ -126,157 +126,170 @@ static const struct img1_directory_entry *find_directory_by_name( const uint8_t 
   return NULL;
 }
 
+/* Check by subtraction so hostile offset + size values cannot wrap. */
+static unsigned int range_fits( uint32_t offset, uint32_t size, uint32_t limit )
+{
+  return offset <= limit && size <= limit - offset;
+}
+
+/* Sections describe relocation targets; segments describe the bytes copied.
+ * Require both descriptions to agree, including file offsets for stored data. */
+static unsigned int section_is_loaded( const Elf32_Shdr *section,
+                                       const Elf32_Phdr *phdrs, uint16_t count )
+{
+  for ( uint16_t i = 0; i < count; ++i )
+  {
+    const Elf32_Phdr *segment = &phdrs[i];
+    if ( segment->p_type != PT_LOAD || section->sh_addr < segment->p_vaddr )
+      continue;
+    uint32_t offset = section->sh_addr - segment->p_vaddr;
+    if ( !range_fits( offset, section->sh_size, segment->p_memsz ) ||
+         ( ( section->sh_flags & SHF_WRITE ) && !( segment->p_flags & PF_W ) ) ||
+         ( ( section->sh_flags & SHF_EXECINSTR ) && !( segment->p_flags & PF_X ) ) )
+      continue;
+    if ( section->sh_type != SHT_NOBITS &&
+         ( !range_fits( offset, section->sh_size, segment->p_filesz ) ||
+           section->sh_offset != segment->p_offset + offset ) )
+      continue;
+    return 1;
+  }
+  return 0;
+}
+
 static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, struct elf_image *elf )
 {
-
   const uint8_t *elf_raw = (const uint8_t *) ehdr;
-
   if ( file_size < sizeof( Elf32_Ehdr ) )
     return 0;
-
-  /*Header validation*/
-  if ( ehdr->e_ident[EI_MAG0] != ELFMAG0 ||
-       ehdr->e_ident[EI_MAG1] != ELFMAG1 || /*Magic bytes*/
-       ehdr->e_ident[EI_MAG2] != ELFMAG2 ||
-       ehdr->e_ident[EI_MAG3] != ELFMAG3 ||
-       ehdr->e_ident[EI_CLASS] != ELFCLASS32 ||               /*Elf 32 bit*/
-       ehdr->e_ident[EI_DATA] != ELFDATA2LSB ||               /*Little-endian*/
-       ehdr->e_ident[EI_VERSION] != EV_CURRENT ||             /*Version 1*/
-       ehdr->e_type != ET_EXEC || ehdr->e_machine != EM_ARM ) /*Executable ARM elf*/
+  if ( ehdr->e_ident[EI_MAG0] != ELFMAG0 || ehdr->e_ident[EI_MAG1] != ELFMAG1 ||
+       ehdr->e_ident[EI_MAG2] != ELFMAG2 || ehdr->e_ident[EI_MAG3] != ELFMAG3 ||
+       ehdr->e_ident[EI_CLASS] != ELFCLASS32 || ehdr->e_ident[EI_DATA] != ELFDATA2LSB ||
+       ehdr->e_ident[EI_VERSION] != EV_CURRENT || ehdr->e_version != EV_CURRENT ||
+       ehdr->e_type != ET_EXEC || ehdr->e_machine != EM_ARM )
     return 0;
 
-  /*Size validation*/
-  if ( ehdr->e_ehsize != 52 || ehdr->e_phentsize != 32 || ehdr->e_shentsize != 40 || ehdr->e_shnum == 0 || ehdr->e_phnum == 0 )
+  /* The IMG1 payload is word-aligned. Reject unaligned tables before casting
+   * their bytes to ELF records, which require word alignment on this target. */
+  if ( ehdr->e_ehsize != sizeof( Elf32_Ehdr ) ||
+       ehdr->e_phentsize != sizeof( Elf32_Phdr ) || ehdr->e_shentsize != sizeof( Elf32_Shdr ) ||
+       ehdr->e_phnum == 0 || ehdr->e_shnum == 0 ||
+       ehdr->e_phoff % 4 != 0 || ehdr->e_shoff % 4 != 0 ||
+       !range_fits( ehdr->e_phoff, (uint32_t) ehdr->e_phnum * sizeof( Elf32_Phdr ), file_size ) ||
+       !range_fits( ehdr->e_shoff, (uint32_t) ehdr->e_shnum * sizeof( Elf32_Shdr ), file_size ) )
     return 0;
 
-  uint32_t ph_table_end = ehdr->e_phoff + ( (uint32_t) ehdr->e_phnum * 32u );
-  uint32_t sh_table_end = ehdr->e_shoff + ( (uint32_t) ehdr->e_shnum * 40u );
-
-  if ( ph_table_end > file_size || sh_table_end > file_size )
-    return 0;
-
+  const Elf32_Phdr *phdrs = (const Elf32_Phdr *) ( elf_raw + ehdr->e_phoff );
   const Elf32_Shdr *shdrs = (const Elf32_Shdr *) ( elf_raw + ehdr->e_shoff );
-  const uint16_t shdrcount = ehdr->e_shnum;
-  const Elf32_Sym *symtable = NULL;
-  uint32_t symcount = 0;
-  /*Check Symbols size and relocation records, it must not have RELA records, dynamic linking, undefined symbols or relocation types other than the ones accepted for loaded content*/
-
-  for ( uint16_t i = 0; i < shdrcount; i++ )
+  uint32_t entry = ehdr->e_entry & ~1u;
+  unsigned int entry_loaded = 0;
+  unsigned int starts_at_zero = 0;
+  for ( uint16_t i = 0; i < ehdr->e_phnum; ++i )
   {
-    if ( shdrs[i].sh_type == SHT_RELA ||   /*RELA section*/
-         shdrs[i].sh_type == SHT_DYNAMIC ) /*Dynamic linking section*/
+    const Elf32_Phdr *segment = &phdrs[i];
+    if ( segment->p_type == PT_DYNAMIC || segment->p_type == PT_INTERP )
       return 0;
+    if ( segment->p_type != PT_LOAD )
+      continue;
+    if ( !range_fits( segment->p_offset, segment->p_filesz, file_size ) ||
+         segment->p_filesz > segment->p_memsz ||
+         !range_fits( segment->p_vaddr, segment->p_memsz, MAX_PROGRAM_SIZE ) )
+      return 0;
+    if ( segment->p_vaddr == 0 && segment->p_memsz != 0 )
+      starts_at_zero = 1;
+    if ( ( segment->p_flags & PF_X ) && entry >= segment->p_vaddr &&
+         range_fits( entry - segment->p_vaddr, 2, segment->p_filesz ) )
+      entry_loaded = 1;
+    /* Overlapping copies could overwrite already checked executable bytes. */
+    for ( uint16_t j = 0; j < i; ++j )
+      if ( phdrs[j].p_type == PT_LOAD && segment->p_memsz && phdrs[j].p_memsz &&
+           segment->p_vaddr < phdrs[j].p_vaddr + phdrs[j].p_memsz &&
+           phdrs[j].p_vaddr < segment->p_vaddr + segment->p_memsz )
+        return 0;
+  }
+  if ( !starts_at_zero || !entry_loaded || !( ehdr->e_entry & 1u ) )
+    return 0;
 
-    if ( shdrs[i].sh_type == SHT_SYMTAB )
-    { /* Check symbol entries size*/
-      if ( shdrs[i].sh_entsize != 16 )
+  for ( uint16_t i = 0; i < ehdr->e_shnum; ++i )
+  {
+    const Elf32_Shdr *section = &shdrs[i];
+    if ( section->sh_type == SHT_RELA || section->sh_type == SHT_DYNAMIC )
+      return 0;
+    if ( section->sh_type != SHT_NOBITS &&
+         !range_fits( section->sh_offset, section->sh_size, file_size ) )
+      return 0;
+    if ( section->sh_type == SHT_SYMTAB &&
+         ( section->sh_entsize != sizeof( Elf32_Sym ) || section->sh_offset % 4 != 0 ||
+           section->sh_size % sizeof( Elf32_Sym ) != 0 ) )
+      return 0;
+    if ( section->sh_type == SHT_REL &&
+         ( section->sh_entsize != sizeof( Elf32_Rel ) || section->sh_offset % 4 != 0 ||
+           section->sh_size % sizeof( Elf32_Rel ) != 0 || section->sh_info >= ehdr->e_shnum ) )
+      return 0;
+    if ( !( section->sh_flags & SHF_ALLOC ) )
+      continue;
+    if ( !range_fits( section->sh_addr, section->sh_size, MAX_PROGRAM_SIZE ) ||
+         !section_is_loaded( section, phdrs, ehdr->e_phnum ) )
+      return 0;
+    for ( uint16_t j = 0; j < i; ++j )
+      if ( ( shdrs[j].sh_flags & SHF_ALLOC ) && section->sh_size && shdrs[j].sh_size &&
+           section->sh_addr < shdrs[j].sh_addr + shdrs[j].sh_size &&
+           shdrs[j].sh_addr < section->sh_addr + section->sh_size )
         return 0;
-      symtable = (const Elf32_Sym *) ( elf_raw + shdrs[i].sh_offset );
-      symcount = shdrs[i].sh_size / 16;
-    }
-    if ( shdrs[i].sh_type != SHT_NOBITS )
-    {
-      if ( shdrs[i].sh_offset + shdrs[i].sh_size > file_size )
-        return 0;
-    }
   }
 
-  /*Check relocation sections*/
-
-  for ( uint16_t i = 0; i < shdrcount; i++ )
+  for ( uint16_t i = 0; i < ehdr->e_shnum; ++i )
   {
-    if ( shdrs[i].sh_type != SHT_REL )
+    const Elf32_Shdr *section = &shdrs[i];
+    if ( section->sh_type != SHT_REL )
       continue;
-
-    if ( shdrs[i].sh_entsize != 8 )
-      return 0;
-
-    if ( shdrs[i].sh_info >= shdrcount )
-      return 0;
-
-    /*Check relocation target*/
-    const Elf32_Shdr *target = &shdrs[shdrs[i].sh_info];
-
+    const Elf32_Shdr *target = &shdrs[section->sh_info];
     if ( !( target->sh_flags & SHF_ALLOC ) )
       continue;
-
-    if ( !symtable )
+    if ( target->sh_type == SHT_NOBITS || section->sh_link >= ehdr->e_shnum ||
+         shdrs[section->sh_link].sh_type != SHT_SYMTAB )
       return 0;
-
-    /*Check relocation section*/
-    const Elf32_Rel *rels = (const Elf32_Rel *) ( elf_raw + shdrs[i].sh_offset );
-    uint32_t relcount = shdrs[i].sh_size / 8;
-    for ( uint32_t r = 0; r < relcount; r++ )
+    /* Each REL section selects its own symbol table through sh_link. */
+    const Elf32_Shdr *symbols = &shdrs[section->sh_link];
+    const Elf32_Sym *symtable = (const Elf32_Sym *) ( elf_raw + symbols->sh_offset );
+    uint32_t symcount = symbols->sh_size / sizeof( Elf32_Sym );
+    const Elf32_Rel *rels = (const Elf32_Rel *) ( elf_raw + section->sh_offset );
+    uint32_t relcount = section->sh_size / sizeof( Elf32_Rel );
+    for ( uint32_t r = 0; r < relcount; ++r )
     {
-      uint32_t r_type = ELF32_R_TYPE( rels[r].r_info );
-      uint32_t r_sym = ELF32_R_SYM( rels[r].r_info );
-
-      if ( r_type != R_ARM_ABS32 &&
-           r_type != R_ARM_THM_PC22 && /*Old newlib alias for R_ARM_THM_CALL*/
-           r_type != R_ARM_THM_JUMP24 )
+      uint32_t type = ELF32_R_TYPE( rels[r].r_info );
+      uint32_t symbol = ELF32_R_SYM( rels[r].r_info );
+      if ( type != R_ARM_ABS32 && type != R_ARM_THM_PC22 && type != R_ARM_THM_JUMP24 )
       {
-        kprintf( "loader: unsupported relocation type %u\n", r_type );
+        kprintf( "loader: unsupported relocation type %u\n", type );
         return 0;
       }
-
-      /* In ET_EXEC files, r_offset is a virtual address relative to the image base
- 			* (not an offset from the start of the target section). Verify that the 4-byte
- 			* patched site falls strictly within [target->sh_addr, target->sh_addr + target->sh_size]
-      * to prevent out-of-bounds writes and integer wrap-around. */
       if ( rels[r].r_offset < target->sh_addr ||
-           rels[r].r_offset + 4 < rels[r].r_offset ||
-           rels[r].r_offset - target->sh_addr + 4 > target->sh_size ) /*If rel section fits the size*/
+           !range_fits( rels[r].r_offset - target->sh_addr, 4, target->sh_size ) ||
+           rels[r].r_offset % ( type == R_ARM_ABS32 ? 4u : 2u ) != 0 ||
+           symbol >= symcount || symtable[symbol].st_shndx == SHN_UNDEF ||
+           ( symtable[symbol].st_shndx >= ehdr->e_shnum && symtable[symbol].st_shndx != SHN_ABS ) )
         return 0;
-
-      if ( r_sym >= symcount )
-        return 0;
-
-      if ( symtable[r_sym].st_shndx == SHN_UNDEF )
-      { // The symbol must exist in the table
-        return 0;
-      }
+      /* An ABS32 word must be rebased once, even across REL sections. */
+      if ( type == R_ARM_ABS32 )
+        for ( uint16_t j = 0; j <= i; ++j )
+        {
+          if ( shdrs[j].sh_type != SHT_REL || !( shdrs[shdrs[j].sh_info].sh_flags & SHF_ALLOC ) )
+            continue;
+          const Elf32_Rel *previous = (const Elf32_Rel *) ( elf_raw + shdrs[j].sh_offset );
+          uint32_t count = j == i ? r : shdrs[j].sh_size / sizeof( Elf32_Rel );
+          for ( uint32_t k = 0; k < count; ++k )
+            if ( previous[k].r_offset == rels[r].r_offset && ELF32_R_TYPE( previous[k].r_info ) == R_ARM_ABS32 )
+              return 0;
+        }
     }
   }
 
-  /*Program headers validation*/
-  const Elf32_Phdr *phdrs = (const Elf32_Phdr *) ( elf_raw + ehdr->e_phoff );
-  const uint16_t phdrcount = ehdr->e_phnum;
-  int loadcount = 0;
-  for ( uint16_t i = 0; i < phdrcount; i++ )
-  {
-    if ( phdrs[i].p_type == PT_LOAD )
-    {
-      loadcount++;
-      /*The segment must be smaller than file_size*/
-      if ( phdrs[i].p_offset + phdrs[i].p_filesz > file_size || phdrs[i].p_memsz < phdrs[i].p_filesz )
-        return 0;
-      if ( phdrs[i].p_vaddr > MAX_PROGRAM_SIZE ||
-           phdrs[i].p_memsz > MAX_PROGRAM_SIZE - phdrs[i].p_vaddr )
-        return 0;
-    }
-    /*No dynamic links*/
-    if ( phdrs[i].p_type == PT_DYNAMIC || phdrs[i].p_type == PT_INTERP )
-      return 0;
-    /*Check if program fits a RAM slot*/
-  }
-
-  if ( loadcount == 0 )
-    return 0;
-
-  if ( ( ehdr->e_entry & 1u ) == 0 )
-  { /*Thumb entry point*/
-    return 0;
-  }
-
-  /*Fill the structure*/
   elf->ehdr = ehdr;
   elf->entry_point = ehdr->e_entry;
   elf->phdrs = phdrs;
-  elf->ph_count = phdrcount;
+  elf->ph_count = ehdr->e_phnum;
   elf->shdrs = shdrs;
-  elf->sh_count = shdrcount;
-  elf->sym = symtable;
-  elf->sym_count = symcount;
+  elf->sh_count = ehdr->e_shnum;
   return 1;
 }
 
@@ -327,8 +340,6 @@ static int copy_data( const struct img1_directory_entry *entry, uint32_t ram_bas
   if ( !search_elf( entry, elf ) )
     return 0;
 
-  /*retrieve the RAM boundaries for this slot*/
-  uint32_t ram_end = ram_base + PROGRAM_SLOT_SIZE;
   /*It finds the starting point in the flash*/
   const uint8_t *flash_base = (const uint8_t *) IMG1 + entry->offset;
 
@@ -341,15 +352,6 @@ static int copy_data( const struct img1_directory_entry *entry, uint32_t ram_bas
 
     if ( phdr->p_type == PT_LOAD )
     {
-      /* Check that the block to be read does not extend beyond the physical end of the file in the Flash memory*/
-      if ( phdr->p_offset + phdr->p_filesz > entry->size )
-        return 0;
-
-      /*Check that the segment does not require more RAM than what has been allocated to the slot*/
-      uintptr_t segment_dest_end = ram_base + phdr->p_vaddr + phdr->p_memsz;
-      if ( segment_dest_end > ram_end )
-        return 0;
-
       /*define the source (Flash) and destination (RAM) pointers for the segment*/
       const uint8_t *src = flash_base + phdr->p_offset;
       uint8_t *dest = ram_ptr + phdr->p_vaddr;
@@ -373,7 +375,7 @@ applies relocations, and creates a corresponding task in the kernel scheduler. *
 int load_program( const char *name )
 {
 
-  if ( !validate_program_name( (const uint8_t *) name ) || !img1_validate( IMG1, IMG1_MAX_SIZE ) )
+  if ( !img1_validate( IMG1, IMG1_MAX_SIZE ) )
     return -1;
 
   const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *) name );
@@ -388,7 +390,7 @@ int load_program( const char *name )
   struct elf_image elf;
   /* Copy segments from Flash to RAM and apply ELF relocations */
   if ( !copy_data( entry, slot_base, &elf ) )
-    return -1;
+    return -4;
 
   /* Determine the task array index and set the stack pointer to the top (end) 
    * of the RAM partition, since the ARM stack grows downward.*/

@@ -195,8 +195,25 @@ static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   (void) a1; /*not used*/
   (void) a2;
 
-  const char *name = (const char *) a0;
-  return load_program( name );
+  if ( tcb_current == 0 )
+    return (uint32_t) -1;
+
+  /* Copy one checked byte at a time: a string may end at the edge of an
+   * allowed range. Checking a full 16-byte buffer would reject such names. */
+  char name[IMG1_NAME_SIZE];
+  for ( unsigned i = 0; i < sizeof( name ); ++i )
+  {
+    if ( a0 > UINT32_MAX - i )
+      return (uint32_t) -1;
+    uint32_t address = a0 + i;
+    if ( !in_range( address, 1, tcb_current->part_start, tcb_current->part_end ) &&
+         !in_range( address, 1, 0, 0x00400000 ) )
+      return (uint32_t) -1;
+    name[i] = *(const char *) address;
+    if ( name[i] == '\0' )
+      return i == 0 ? (uint32_t) -1 : (uint32_t) load_program( name );
+  }
+  return (uint32_t) -1;
 }
 
 /* Wait bookkeeping is supplied even though the untouched base has no loader.

@@ -28,11 +28,13 @@ struct elf_image {
   uint16_t ph_count;
   const Elf32_Shdr *shdrs; /* section headers*/
   uint16_t sh_count;
-  const Elf32_Sym *sym; /* string and symbol tables*/
-  uint16_t sym_count;
   uint32_t entry_point; /*e_entry*/
 };
 
+/* Kernel-only: name must already be a readable, nonempty NUL-terminated
+ * string of at most 15 characters. SVC 13 checks/copies caller memory.
+ * Returns a task id, -1 for invalid IMG1, -2 for no match, -3 for a full
+ * slot table, or -4 for invalid program contents. */
 int load_program( const char *name );
 /* Number of directory entries in the FLASH image at IMG1.
  * Returns 1..32, or -1 when the image breaks assignment section 6.1.
