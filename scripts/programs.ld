@@ -31,7 +31,7 @@ SECTIONS {
     } : text                        /*  goes in "text (R+X)" defined in PHDRS  */ 
 
 
-    . = ALIGN(4);               /* TO DO: change alignement according to mpu settings (github issue #4) */
+    . = ALIGN(512);               /* alignment according to MPU */
     .data : {
         *(.data .data.*)
         . = ALIGN(4);
