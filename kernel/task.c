@@ -187,6 +187,8 @@ uint32_t task_start_first( void )
                        tcb_current->part_end - tcb_current->part_start,
                        tcb_current->executable );
 
+  mpu_set_code_region( tcb_current->part_start, tcb_current->code_size );
+
   /* The first task is entered by the return from this SVCall
      * exception, not by PendSV. That return pops only the 8-word
      * hardware frame, so PSP must point at the frame, 8 words above
@@ -294,7 +296,7 @@ int task_program_slot_free( unsigned slot )
 
 int task_program_create( unsigned slot, const char *name,
                          void ( *entry )( void ), uint32_t *stack_top,
-                         int executable )
+                         int executable, uint32_t code_size )
 {
   if ( !task_program_slot_free( slot ) || entry == 0 )
     return -1;
@@ -328,6 +330,7 @@ int task_program_create( unsigned slot, const char *name,
   t->wait_id = 0;
   t->wait_result = 0;
   task_init_stack( t );
+  t->code_size = code_size;
   t->state = TASK_READY;
   kprintf( "loader: %s slot=%u base=0x%x id=%u\n",
            t->name, slot, base, t->task_id );
@@ -433,6 +436,8 @@ void task_switch_context( void )
      * switch. */
   mpu_set_task_region( next->part_start, next->part_end - next->part_start,
                        next->executable );
+
+  mpu_set_code_region( next->part_start, next->code_size );
 
   /* Write the switch in the trace, but only if the task really
      * changed (a task that keeps the CPU is not a switch). The

@@ -29,6 +29,7 @@ struct elf_image {
   const Elf32_Shdr *shdrs; /* section headers*/
   uint16_t sh_count;
   uint32_t entry_point; /*e_entry*/
+  uint32_t code_size;
 };
 
 /* Kernel-only: name must already be a readable, nonempty NUL-terminated

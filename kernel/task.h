@@ -65,6 +65,7 @@ struct tcb {
   uint32_t wait_id;          /* if WAITING: loaded task being joined */
   uint32_t *wait_result;     /* caller's saved r0, completed by task exit */
   uint8_t executable;        /* project MPU policy input */
+  uint32_t code_size;        /* bytes of text segment (.text + .rodata) in the partition; = 0 for shell and idle (their .text lives in FLASH) */
 };
 
 #define PROGRAM_SLOT_COUNT 4
@@ -118,7 +119,7 @@ void task_configure_shell( const char *name, void ( *entry )( void ),
                            uint32_t *data_end, const uint32_t *data_load );
 int task_program_create( unsigned slot, const char *name,
                          void ( *entry )( void ), uint32_t *stack_top,
-                         int executable );
+                         int executable, uint32_t code_size );
 int task_program_slot_free( unsigned slot );
 int task_wait_program( uint32_t id, uint32_t *saved_result );
 void task_fault_current( void );
