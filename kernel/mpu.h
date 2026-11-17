@@ -16,6 +16,12 @@
 
 #include <stdint.h>
 
+/* Region 2 splits a 4 KiB program slot into eight subregions of this size.
+ * Code is protected in whole subregions, so the first writable byte of a
+ * program slot is code_size rounded up to it (see ALIGN(512) in
+ * scripts/programs.ld). */
+#define MPU_CODE_SUBREGION_SIZE 512u
+
 /* Set up region 0 (FLASH) and switch the MPU on. Called once by main(). */
 void mpu_init( void );
 
