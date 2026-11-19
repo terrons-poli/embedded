@@ -1,7 +1,9 @@
 #include "kernel/loader.h"
 #include <stddef.h>
+#include <stdint.h>
 #include "kernel/task.h"
 #include "kernel/kprintf.h"
+#include "elf.h"
 
 #define IMG1_HEADER_SIZE 20U
 #define IMG1_ENTRY_SIZE 24U
@@ -183,6 +185,9 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
   uint32_t entry = ehdr->e_entry & ~1u;
   unsigned int entry_loaded = 0;
   unsigned int starts_at_zero = 0;
+  unsigned int code_found = 0;
+  uint32_t code_size = 0;
+
   for ( uint16_t i = 0; i < ehdr->e_phnum; ++i )
   {
     const Elf32_Phdr *segment = &phdrs[i];
@@ -199,6 +204,17 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
     if ( ( segment->p_flags & PF_X ) && entry >= segment->p_vaddr &&
          range_fits( entry - segment->p_vaddr, 2, segment->p_filesz ) )
       entry_loaded = 1;
+
+    if ( segment->p_flags & PF_X )
+    {
+      if ( segment->p_vaddr != 0 ||
+           segment->p_flags & PF_W ||
+           code_found != 0 )
+        return 0;
+      code_size = segment->p_memsz;
+      code_found = 1;
+    }
+
     /* Overlapping copies could overwrite already checked executable bytes. */
     for ( uint16_t j = 0; j < i; ++j )
       if ( phdrs[j].p_type == PT_LOAD && segment->p_memsz && phdrs[j].p_memsz &&
@@ -206,8 +222,19 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
            phdrs[j].p_vaddr < segment->p_vaddr + segment->p_memsz )
         return 0;
   }
+
   if ( !starts_at_zero || !entry_loaded || !( ehdr->e_entry & 1u ) )
     return 0;
+
+  uint32_t code_end = ( code_size + 511 ) / 512 * 512;
+  for ( uint16_t i = 0; i < ehdr->e_phnum; ++i )
+  {
+    if ( phdrs[i].p_type == PT_LOAD && !( phdrs[i].p_flags & PF_X ) && phdrs[i].p_memsz != 0 )
+    {
+      if ( phdrs[i].p_vaddr < code_end )
+        return 0;
+    }
+  }
 
   for ( uint16_t i = 0; i < ehdr->e_shnum; ++i )
   {
@@ -290,6 +317,7 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
   elf->ph_count = ehdr->e_phnum;
   elf->shdrs = shdrs;
   elf->sh_count = ehdr->e_shnum;
+  elf->code_size = code_size;
   return 1;
 }
 
@@ -401,7 +429,8 @@ int load_program( const char *name )
                                      name,
                                      ( void ( * )( void ) )( slot_base + elf.entry_point ),
                                      stack_top,
-                                     1 );
+                                     0,
+                                     elf.code_size );
 
   return task_id;
 }

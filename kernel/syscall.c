@@ -33,6 +33,7 @@
 #include "kernel/task.h"
 #include "kernel/trace.h"
 #include "kernel/loader.h"
+#include "kernel/mpu.h"
 
 #include "kernel/loader.h"
 /* Every service has the same shape: up to three arguments (the
@@ -46,6 +47,18 @@ typedef uint32_t ( *syscall_fn )( uint32_t a0, uint32_t a1, uint32_t a2 );
 static int in_range( uint32_t p, uint32_t len, uint32_t start, uint32_t end )
 {
   return p >= start && p <= end && len <= end - p;
+}
+
+/* Can the kernel write [p, p + len) for task t? Region 2 makes the code
+ * subregions at the start of a program slot read-only, for the kernel too,
+ * so a store there would fault inside the SVC handler and halt the system.
+ * Only the part after the rounded-up code is writable. code_size is at most
+ * 3072, so the rounding cannot wrap. */
+static int task_writable( const struct tcb *t, uint32_t p, uint32_t len )
+{
+  uint32_t code_end = ( t->code_size + MPU_CODE_SUBREGION_SIZE - 1 ) /
+                      MPU_CODE_SUBREGION_SIZE * MPU_CODE_SUBREGION_SIZE;
+  return in_range( p, len, t->part_start + code_end, t->part_end );
 }
 
 /* SYS_WRITE: a0 = buf, a1 = len. Put as many bytes as fit into the
@@ -137,10 +150,11 @@ static uint32_t sys_delay_until_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return (uint32_t) -1;
 
   /* The kernel is going to read and WRITE *last_wake. As for
-     * SYS_WRITE, accept the address only inside the caller's own
-     * partition, or a task could make the kernel write anywhere. It
+     * SYS_WRITE, accept the address only inside the writable part of the
+     * caller's own partition, or a task could make the kernel write
+     * anywhere, or fault on its read-only code. It
      * must also be a multiple of 4, as every uint32_t is. */
-  if ( !in_range( a0, sizeof( uint32_t ), t->part_start, t->part_end ) || ( a0 & 3 ) != 0 )
+  if ( !task_writable( t, a0, sizeof( uint32_t ) ) || ( a0 & 3 ) != 0 )
     return (uint32_t) -1;
 
   uint32_t *last_wake = (uint32_t *) a0; /* the number is really an address */
@@ -238,7 +252,8 @@ static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 /* SYS_IMAGE_NAME: a0 = index, a1 = destination, a2 = capacity.
  * Copy one directory name into the caller's own RAM. FLASH is a legal
  * source for SYS_WRITE, but it is not a legal destination here: the whole
- * buffer must sit in the caller's partition. Capacity is checked first,
+ * buffer must sit in the writable part of the caller's partition, never in
+ * a loaded program's read-only code. Capacity is checked first,
  * because a length of 0 would otherwise look in-range. A name that does
  * not fit is still stored as a shorter NUL-terminated prefix. */
 static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
@@ -246,7 +261,7 @@ static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
   if ( a2 < 1 || a2 > IMG1_NAME_SIZE )
     return (uint32_t) -1;
   const struct tcb *t = tcb_current;
-  if ( t == 0 || !in_range( a1, a2, t->part_start, t->part_end ) )
+  if ( t == 0 || !task_writable( t, a1, a2 ) )
     return (uint32_t) -1;
   return (uint32_t) img1_name( a0, (char *) a1, a2 );
 }
