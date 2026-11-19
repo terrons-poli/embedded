@@ -182,12 +182,10 @@ uint32_t task_start_first( void )
   tick_count = 0; /* count from the start of the scheduler */
   kprintf( "scheduler: round robin, quantum %u ticks\n", QUANTUM );
 
-  /* MPU region 1 = this task's partition, so the task may use it. */
+  /* Apply the first task's RAM permissions before entering it. */
   mpu_set_task_region( tcb_current->part_start,
                        tcb_current->part_end - tcb_current->part_start,
-                       tcb_current->executable );
-
-  mpu_set_code_region( tcb_current->part_start, tcb_current->code_size );
+                       tcb_current->executable, tcb_current->code_size );
 
   /* The first task is entered by the return from this SVCall
      * exception, not by PendSV. That return pops only the 8-word
@@ -431,13 +429,9 @@ void task_switch_context( void )
   tcb_current = next; /* PendSV loads next->sp */
   quantum_left = QUANTUM;
 
-  /* MPU region 1 = the new task's partition. From now on the old
-     * task's partition is off limits, so isolation holds across the
-     * switch. */
+  /* Apply the new task's RAM permissions before resuming it. */
   mpu_set_task_region( next->part_start, next->part_end - next->part_start,
-                       next->executable );
-
-  mpu_set_code_region( next->part_start, next->code_size );
+                       next->executable, next->code_size );
 
   /* Write the switch in the trace, but only if the task really
      * changed (a task that keeps the CPU is not a switch). The
