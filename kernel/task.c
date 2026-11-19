@@ -433,6 +433,17 @@ void task_switch_context( void )
   mpu_set_task_region( next->part_start, next->part_end - next->part_start,
                        next->executable, next->code_size );
 
+  /* PendSV has finished saving the old stack, and the MPU no longer
+   * maps the old program's code as read-only. Clear the slot before
+   * any task can reuse it. */
+  if ( old->state == TASK_UNUSED && program_index( old ) >= 0 )
+  {
+    uint32_t *word = (uint32_t *) old->part_start;
+    const uint32_t *end = (const uint32_t *) old->part_end;
+    while ( word < end )
+      *word++ = 0;
+  }
+
   /* Write the switch in the trace, but only if the task really
      * changed (a task that keeps the CPU is not a switch). The
      * pointer difference is the index in the task table. */
