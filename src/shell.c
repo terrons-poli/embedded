@@ -13,7 +13,7 @@ void shell_main()
   for ( ;; )
   {
     char buffer[32];
-    int i = 0;
+    unsigned int length = 0;
 
     printf( "scratch> " );
 
@@ -29,41 +29,20 @@ void shell_main()
         continue;
       }
 
-      /* Check if the user pressed the Enter key (Carriage Return or Line Feed) */
       if ( c == '\r' || c == '\n' )
       {
         printf( "\n" );
-
-        /* Null-terminate the string so standard C functions can safely read it */
-        buffer[i] = '\0';
+        buffer[length] = '\0';
         break;
       }
-      /* Handle Backspace (ASCII 8 '\b' or ASCII 127 DEL) */
-      else if ( c == '\b' || c == 127 )
+      else if ( length < sizeof( buffer ) - 1 )
       {
-        if ( i > 0 )
-        {
-          i--;
-          /* Erase character from terminal: backspace, overwrite with space, backspace */
-          printf( "\b \b" );
-        }
-      }
-      else
-      {
-        /*
-        * Implement "silent drop" security feature: 
-        * we accept the character only if we still have space in the buffer.
-        * Otherwise, we completely ignore the input to prevent buffer overflows.
-        */
-        if ( i < 31 )
-        {
-          printf( "%c", (char) c );
-          buffer[i] = (char) c;
-          i++;
-        }
+        buffer[length] = (char) c;
+        length++;
+        printf( "%c", (char) c );
       }
     }
-    execute_command( buffer );
+    execute_command( buffer, length );
   }
 }
 
