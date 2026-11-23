@@ -2,12 +2,25 @@
 #include "lib/printf.h"
 #include "lib/syscalls.h"
 
+/* Compare at most n bytes, stopping at the first NUL. */
+static int my_strncmp( const char *s1, const char *s2, unsigned int n )
+{
+  while ( n > 0 && *s1 && ( *s1 == *s2 ) )
+  {
+    s1++;
+    s2++;
+    n--;
+  }
+  if ( n == 0 )
+    return 0;
+  return *(const unsigned char *) s1 - *(const unsigned char *) s2;
+}
+
 void execute_command( const char *cmd, unsigned int cmd_length )
 {
 
   /* Command 'help': Show available commands */
-  if ( cmd_length == 4 && cmd[0] == 'h' && cmd[1] == 'e' &&
-       cmd[2] == 'l' && cmd[3] == 'p' )
+  if ( cmd_length == 4 && my_strncmp( cmd, "help", cmd_length ) == 0 )
   {
     printf( "help - show commands\n" );
     printf( "ls - list programs\n" );
@@ -15,7 +28,7 @@ void execute_command( const char *cmd, unsigned int cmd_length )
   }
 
   /* Command 'ls': List all available programs */
-  else if ( cmd_length == 2 && cmd[0] == 'l' && cmd[1] == 's' )
+  else if ( cmd_length == 2 && my_strncmp( cmd, "ls", cmd_length ) == 0 )
   {
     /* Get the total number of executable images from the kernel (SVC 11) */
     int count = sys_image_count();
@@ -41,8 +54,7 @@ void execute_command( const char *cmd, unsigned int cmd_length )
     }
   }
   /* Command 'run <name>': Execute a specific program */
-  else if ( cmd_length >= 5 && cmd[0] == 'r' && cmd[1] == 'u' &&
-            cmd[2] == 'n' && cmd[3] == ' ' )
+  else if ( cmd_length > 4 && my_strncmp( cmd, "run ", 4 ) == 0 )
   {
     unsigned int i;
     for ( i = 0; i < cmd_length; i++ )
