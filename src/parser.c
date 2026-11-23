@@ -2,45 +2,12 @@
 #include "lib/printf.h"
 #include "lib/syscalls.h"
 
-/* 
- * Bare-metal implementation of standard strcmp.
- * Compares two null-terminated strings character by character.
- * Returns 0 if they are exactly identical, or the ASCII difference otherwise.
- */
-static int my_strcmp( const char *s1, const char *s2 )
-{
-
-  while ( *s1 && ( *s1 == *s2 ) )
-  {
-    s1++;
-    s2++;
-  }
-  return *(const unsigned char *) s1 - *(const unsigned char *) s2;
-}
-
-/* 
- * Bare-metal implementation of standard strncmp.
- * Compares up to 'n' characters of two strings.
- * Returns 0 if the first 'n' characters match, or the ASCII difference otherwise.
- */
-static int my_strncmp( const char *s1, const char *s2, unsigned int n )
-{
-  while ( n > 0 && *s1 && ( *s1 == *s2 ) )
-  {
-    s1++;
-    s2++;
-    n--;
-  }
-  if ( n == 0 )
-    return 0;
-  return *(const unsigned char *) s1 - *(const unsigned char *) s2;
-}
-
-void execute_command( const char *cmd )
+void execute_command( const char *cmd, unsigned int cmd_length )
 {
 
   /* Command 'help': Show available commands */
-  if ( my_strcmp( cmd, "help" ) == 0 )
+  if ( cmd_length == 4 && cmd[0] == 'h' && cmd[1] == 'e' &&
+       cmd[2] == 'l' && cmd[3] == 'p' )
   {
     printf( "help - show commands\n" );
     printf( "ls - list programs\n" );
@@ -48,7 +15,7 @@ void execute_command( const char *cmd )
   }
 
   /* Command 'ls': List all available programs */
-  else if ( my_strcmp( cmd, "ls" ) == 0 )
+  else if ( cmd_length == 2 && cmd[0] == 'l' && cmd[1] == 's' )
   {
     /* Get the total number of executable images from the kernel (SVC 11) */
     int count = sys_image_count();
@@ -74,20 +41,23 @@ void execute_command( const char *cmd )
     }
   }
   /* Command 'run <name>': Execute a specific program */
-  /* Check for "run " (4 characters including the space) */
-  else if ( my_strncmp( cmd, "run ", 4 ) == 0 )
+  else if ( cmd_length >= 5 && cmd[0] == 'r' && cmd[1] == 'u' &&
+            cmd[2] == 'n' && cmd[3] == ' ' )
   {
+    unsigned int i;
+    for ( i = 0; i < cmd_length; i++ )
+      if ( cmd[i] == '\0' )
+        break;
 
-    /* The program name starts immediately after "run " (index 4) */
-    const char *program_name = cmd + 4;
-
-    //An empty line, run alone prints the error
-    if ( program_name[0] == '\0' )
+    if ( i != cmd_length )
     {
       printf( "error: unknown command\n" );
     }
     else
     {
+      /* The program name starts immediately after "run " (index 4) */
+      const char *program_name = cmd + 4;
+
       /* Ask the kernel (SVC 13) to load and start the requested program */
       int task_id = sys_program_run( program_name );
 
