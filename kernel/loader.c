@@ -110,6 +110,24 @@ static unsigned int img1_validate( const void *image, size_t available_size )
   return 1;
 }
 
+enum img1_cache_state {
+  IMG1_UNCHECKED = 0,
+  IMG1_INVALID,
+  IMG1_VALID,
+};
+
+/* The FLASH image at IMG1 is read-only and never changes after boot.
+ * Validate it once on first use and reuse the result for subsequent
+ * directory lookups, counts, and program loads. */
+static enum img1_cache_state img1_cache = IMG1_UNCHECKED;
+
+static unsigned int img1_flash_valid( void )
+{
+  if ( img1_cache == IMG1_UNCHECKED )
+    img1_cache = img1_validate( IMG1, IMG1_MAX_SIZE ) ? IMG1_VALID : IMG1_INVALID;
+  return img1_cache == IMG1_VALID;
+}
+
 static int find_free_memory_slot()
 {
   for ( uint32_t i = 0; i < PROGRAM_SLOT_COUNT; i++ )
@@ -403,7 +421,7 @@ applies relocations, and creates a corresponding task in the kernel scheduler. *
 int load_program( const char *name )
 {
 
-  if ( !img1_validate( IMG1, IMG1_MAX_SIZE ) )
+  if ( !img1_flash_valid() )
     return -1;
 
   const struct img1_directory_entry *entry = find_directory_by_name( (const uint8_t *) name );
@@ -441,7 +459,7 @@ int load_program( const char *name )
  * validation has already bounded that multiply by the image size. */
 static const uint8_t *img1_entry_at( unsigned index )
 {
-  if ( !img1_validate( IMG1, IMG1_MAX_SIZE ) )
+  if ( !img1_flash_valid() )
     return NULL;
   const uint8_t *bytes = (const uint8_t *) IMG1;
   uint32_t count = read_u32( bytes + 12 );
@@ -453,7 +471,7 @@ static const uint8_t *img1_entry_at( unsigned index )
 
 int img1_count( void )
 {
-  if ( !img1_validate( IMG1, IMG1_MAX_SIZE ) )
+  if ( !img1_flash_valid() )
     return -1;
   return (int) read_u32( (const uint8_t *) IMG1 + 12 );
 }
