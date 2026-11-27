@@ -153,6 +153,8 @@ static unsigned int section_is_loaded( const Elf32_Shdr *section,
          ( !range_fits( offset, section->sh_size, segment->p_filesz ) ||
            section->sh_offset != segment->p_offset + offset ) )
       continue;
+    if ( section->sh_type == SHT_NOBITS && section->sh_size > 0 && offset < segment->p_filesz )
+      continue;
     return 1;
   }
   return 0;
