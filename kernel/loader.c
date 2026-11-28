@@ -176,7 +176,7 @@ static unsigned int section_is_loaded( const Elf32_Shdr *section,
   return 0;
 }
 
-static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, struct elf_image *elf )
+static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, struct elf_image *elf, uint32_t slot_base )
 {
   const uint8_t *elf_raw = (const uint8_t *) ehdr;
   if ( file_size < sizeof( Elf32_Ehdr ) )
@@ -314,8 +314,15 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
            symbol >= symcount || symtable[symbol].st_shndx == SHN_UNDEF ||
            ( symtable[symbol].st_shndx >= ehdr->e_shnum && symtable[symbol].st_shndx != SHN_ABS ) )
         return 0;
-      /* An ABS32 word must be rebased once, even across REL sections. */
       if ( type == R_ARM_ABS32 )
+      {
+        uint32_t offset_in_section = rels[r].r_offset - target->sh_addr;
+        uint32_t file_offset = target->sh_offset + offset_in_section;
+        uint32_t original_word = read_u32( elf_raw + file_offset );
+        if ( original_word > UINT32_MAX - slot_base )
+          return 0;
+
+        /* An ABS32 word must be rebased once, even across REL sections. */
         for ( uint16_t j = 0; j <= i; ++j )
         {
           if ( shdrs[j].sh_type != SHT_REL || !( shdrs[shdrs[j].sh_info].sh_flags & SHF_ALLOC ) )
@@ -326,6 +333,7 @@ static unsigned int validate_elf( const Elf32_Ehdr *ehdr, uint32_t file_size, st
             if ( previous[k].r_offset == rels[r].r_offset && ELF32_R_TYPE( previous[k].r_info ) == R_ARM_ABS32 )
               return 0;
         }
+      }
     }
   }
 
@@ -367,14 +375,14 @@ static void apply_relocations( const struct elf_image *elf, uintptr_t slot_base 
   }
 }
 
-static unsigned int search_elf( const struct img1_directory_entry *directory, struct elf_image *elf )
+static unsigned int search_elf( const struct img1_directory_entry *directory, struct elf_image *elf, uint32_t slot_base )
 {
   if ( !directory )
     return 0;
   const uint8_t *base = (const uint8_t *) IMG1 + directory->offset;
   const Elf32_Ehdr *ehdr = (const Elf32_Ehdr *) base;
 
-  return validate_elf( ehdr, directory->size, elf );
+  return validate_elf( ehdr, directory->size, elf, slot_base );
 }
 
 /*Parses the ELF image of a program, validates its segment boundaries,
@@ -383,7 +391,7 @@ static unsigned int search_elf( const struct img1_directory_entry *directory, st
 static int copy_data( const struct img1_directory_entry *entry, uint32_t ram_base, struct elf_image *elf )
 {
 
-  if ( !search_elf( entry, elf ) )
+  if ( !search_elf( entry, elf, ram_base ) )
     return 0;
 
   /*It finds the starting point in the flash*/
